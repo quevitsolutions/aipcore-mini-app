@@ -1,65 +1,146 @@
-.progress-gradient {
-  background: linear-gradient(to right, #90ef89, #d692dd, #726edd);
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #000;
+    color: #fff; /* Sharp White */
+    font-family: 'Outfit', sans-serif; /* Modern, sharper font than Inter */
+    margin: 0;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* AIPCore Design Tokens */
+:root {
+  --mint: #ffffff;
+  --dark-mint: #e0e0e0;
+  --matrix-bg: #0a0a0a;
+  --primary-red: #ff4d4d;
+  --node-green: #00ff88;
+  --border-color: rgba(255, 255, 255, 0.15); /* Sharper border */
+}
+
+/* Background Matrix Grid */
+.matrix-grid {
+  background-image: 
+    radial-gradient(rgba(255, 255, 255, 0.08) 1.5px, transparent 1.5px); /* Clearer grid */
+  background-size: 32px 32px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: -1;
+  pointer-events: none;
 }
 
 .top-glow {
-  box-shadow: 0 -26px 20px rgba(243, 186, 47, 0.3);
+  box-shadow: 0 -26px 40px rgba(0, 255, 136, 0.15);
 }
 
-/* Define the keyframes for the blinking animation */
-@keyframes blink {
-  0% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0;
-  }
-
-  100% {
-    opacity: 1;
-  }
+.progress-gradient {
+  background: linear-gradient(to right, #00ff88, #00ccff);
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.2);
 }
 
-/* Apply the animation to the dot class */
-.dot {
-  width: 6px;
-  height: 6px;
-  background-color: white;
-  border-radius: 50%;
+.click-card {
+  background: radial-gradient(circle at center, #1a1a1a 0%, #000 100%);
+  border: 1.5px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+}
+
+.click-card:active {
+  transform: scale(0.96) translateY(2px);
+}
+
+/* Animations */
+@keyframes floatUp {
+  0% { opacity: 1; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(-120px); }
+}
+
+.tap-indicator {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  animation: blink 1s infinite;
+  color: #fff;
+  font-weight: 900;
+  pointer-events: none;
+  animation: floatUp 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  text-shadow: 0 0 10px rgba(0, 255, 136, 0.8);
+  font-size: 24px;
 }
 
-.click-card {
-  background: radial-gradient(circle, #4960b2, #282e3e);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50px;
-  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+.nav-item {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: rgba(255, 255, 255, 0.5);
 }
 
+.nav-item.active {
+  color: #fff;
+  background: rgba(0, 255, 136, 0.15);
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.05);
+}
 
+.glass-card {
+  background: rgba(18, 18, 18, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1.5px solid rgba(255, 255, 255, 0.08); /* Increased contrast */
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
 
-@keyframes float {
-  0% {
-    opacity: 1;
-    transform: translateY(0);
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+}
+
+/* Sidebar & Dashboard Transitions */
+.sidebar-item {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.sidebar-item:hover {
+  background: rgba(0, 255, 136, 0.05);
+  color: var(--node-green);
+}
+
+.sidebar-item.active {
+  background: rgba(0, 255, 136, 0.1);
+  color: var(--node-green);
+}
+
+.sidebar-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 15%;
+  height: 70%;
+  width: 3px;
+  background: var(--node-green);
+  border-radius: 0 4px 4px 0;
+}
+
+/* No Scrollbar Utility */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Responsive Grid Adjustments */
+@media (min-width: 1024px) {
+  .main-content-scroll {
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-color) transparent;
   }
-
-  100% {
-    opacity: 0;
-    transform: translateY(-50px);
-  }
 }
-.click-card {
-  transition: transform 0.1s ease-in-out;
-}
-
-
-
-
-

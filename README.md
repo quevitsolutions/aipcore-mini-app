@@ -1,76 +1,50 @@
-# Hamster Kombat Clone
+# AIPCORE - The Ultimate Matrix Mini App
 
-This repository contains the initial setup and the final version of the Hamster Kombat clone project, including the basic project structure, necessary images, and icons.
+AIPCORE is a high-performance, gamified Web3 Mini App built for the Telegram ecosystem. It combines an addictive tapping mechanic with a powerful 18-level matrix reward system on the Binance Smart Chain.
 
-## Overview
+## 🚀 Key Features
 
-This project is a clone of the popular Telegram mini app, Hamster Kombat. The repository provides two branches:
+- **Tap-to-Earn**: High-fidelity tapping interface with energy management and node-based boosts.
+- **18-Level Matrix**: Automated BNB distribution across a massive referral network.
+- **Admin Dashboard**: Comprehensive control center for snapshotting, reward distribution, and task management.
+- **Scalable RPC**: Browser-side node rotation for million-user stability without server bottlenecks.
+- **One-Click Conversion**: Seemless transition from off-chain tapping coins to on-chain AIP reward units.
 
-1. **Initial Setup**: Provides the foundational structure and assets needed to build the full application.
-2. **Final Version**: The completed application with all functionalities.
+## 🛠️ Getting Started
 
-## Getting Started
+### Installation
 
-To get started with either the initial setup or the final version, follow these instructions:
-
-### Cloning the Repository
-
-1. **Clone the Repository**:
-
+1. **Clone the Project**:
     ```bash
-    git clone https://github.com/nikandr-surkov/Hamster-Kombat-Telegram-Mini-App-Clone.git
-    cd Hamster-Kombat-Telegram-Mini-App-Clone
+    git clone [your-repo-url]
+    cd aipcore-mini-app
     ```
 
-### Initial Setup
-
-2. **Switch to the `initial-setup` Branch**:
-
-    ```bash
-    git checkout initial-setup
-    ```
-
-3. **Install Dependencies**:
-
+2. **Install Dependencies**:
     ```bash
     npm install
     ```
 
-4. **Run the Development Server**:
-
+3. **Run Development Server**:
     ```bash
     npm run dev
     ```
 
-5. **Open Your Browser**:
+## 🌐 Production Deployment
 
-    Navigate to localhost to see the initial setup.
+For production hosting on a VPS (AWS/DigitalOcean):
 
-### Final Version
-
-2. **Switch to the `final-version` Branch**:
-
+1. **Build the Application**:
     ```bash
-    git checkout final-version
+    npm run build
     ```
 
-3. **Install Dependencies**:
+2. **Configure Nginx**:
+    Use the provided `nginx.conf` to serve the `dist/` directory.
 
-    ```bash
-    npm install
-    ```
+3. **Process Management**:
+    Use `pm2 start ecosystem.config.cjs` to ensure the app remains online.
 
-4. **Run the Development Server**:
+## 📄 License
 
-    ```bash
-    npm run dev
-    ```
-
-5. **Open Your Browser**:
-
-    Navigate to localhost to see the final version of the application.
-
-## Contact
-
-For any inquiries, please contact me in Telegram: [Nikandr Surkov](https://t.me/nikandr_s).
-
+Proprietary - AIPCORE Network.

@@ -1,6 +1,6 @@
 import React from "react";
 
-const Hamster = ({ size = 24, className = "" }) => {
+const AipLogo = ({ size = 24, className = "" }) => {
   const svgSize = `${size}px`;
 
   return (
@@ -37,4 +37,4 @@ const Hamster = ({ size = 24, className = "" }) => {
   );
 };
 
-export default Hamster;
+export default AipLogo;

@@ -1,0 +1,9 @@
+node_modules
+dist
+pg
+pgpass.txt
+postgresql.zip
+server/.env
+.env
+*.log
+.DS_Store

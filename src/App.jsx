@@ -52,7 +52,7 @@ import {
 } from './utils/web3';
 import { getOffchainReferralStats } from './services/referralService';
 
-const BACKEND_URL = 'https://nfengine.online/api';
+const BACKEND_URL = import.meta.env.DEV ? 'http://localhost:5000/api' : 'https://nfengine.online/api';
 
 const App = () => {
   // Navigation

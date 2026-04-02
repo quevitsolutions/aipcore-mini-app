@@ -3,7 +3,9 @@ const { Pool } = require('pg');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const rateLimit = require('express-rate-limit');
+const TelegramBot = require('node-telegram-bot-api');
 require('dotenv').config();
+
 
 const app = express();
 const port = process.env.PORT || 5000;
@@ -106,3 +108,47 @@ app.post('/api/user/sync', async (req, res) => {
 app.listen(port, () => {
     console.log(`AIPCore Backend running on port ${port}`);
 });
+
+// Initialize Telegram Bot Engine
+const botToken = process.env.TELEGRAM_BOT_TOKEN;
+if (botToken) {
+    const bot = new TelegramBot(botToken, { polling: true });
+    
+    bot.onText(/\/start/, (msg) => {
+        const chatId = msg.chat.id;
+        
+        const opts = {
+            reply_markup: {
+                inline_keyboard: [
+                    [
+                        {
+                            text: '🚀 Launch AIPCore Dashboard',
+                            web_app: { url: 'https://nfengine.online' }
+                        }
+                    ],
+                    [
+                        {
+                            text: '💬 Join Community',
+                            url: 'https://t.me/AIPCore'
+                        }
+                    ]
+                ]
+            },
+            parse_mode: 'Markdown'
+        };
+
+        bot.sendMessage(
+            chatId, 
+            'Welcome to the *AIPCORE Ecosystem*! 🦾\n\nTap the button below to launch your Web3 Mini App Dashboard and start managing your nodes.', 
+            opts
+        );
+    });
+
+    bot.on('polling_error', (error) => {
+        console.error('Polling Error:', error.message); 
+    });
+
+    console.log('Telegram Bot polling service initialized.');
+} else {
+    console.warn('WARNING: No TELEGRAM_BOT_TOKEN found in .env, bot cannot start.');
+}

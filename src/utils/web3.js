@@ -1,12 +1,12 @@
 import { ethers } from 'ethers';
 import { createAppKit } from '@reown/appkit';
 import { EthersAdapter } from '@reown/appkit-adapter-ethers';
+import { bsc } from '@reown/appkit/networks';
 import abi from './abi.json';
 
 const PROJECT_ID = '85bbe92e974bca9f67c7910e0d1365ea';
 const CONTRACT_ADDRESS = '0xB6CbD70147835D4eA93B4a768D8e101B6E9A420f';
 const VIEW_CONTRACT_ADDRESS = '0x8d4FBcb77EAA5260F4C5f41713c6968A197E2BDb';
-const BSC_NETWORK_ID = 56;
 
 // SCALABLE RPC POOL (Client-Side Failover)
 const RPC_POOL = [
@@ -14,14 +14,6 @@ const RPC_POOL = [
   'https://binance.llamarpc.com',
   'https://rpc.ankr.com/bsc'
 ];
-
-const bsc = {
-  chainId: BSC_NETWORK_ID,
-  name: 'Binance Smart Chain',
-  currency: 'BNB',
-  explorerUrl: 'https://bscscan.com',
-  rpcUrl: RPC_POOL[0]
-};
 
 const metadata = {
   name: 'AIPCORE',
@@ -34,20 +26,29 @@ let modalInstance = null;
 
 export const getAppKitModal = () => {
   if (modalInstance) return modalInstance;
-  
+
   modalInstance = createAppKit({
     adapters: [new EthersAdapter()],
     networks: [bsc],
     metadata,
     projectId: PROJECT_ID,
     features: {
-      analytics: true
-    }
+      analytics: false,  // disable analytics to prevent blocking wallet list
+      email: false,      // disable email login (not needed)
+      socials: [],       // disable social logins
+    },
+    allWallets: 'SHOW', // always show the full wallet list
+    defaultNetwork: bsc,
   });
   return modalInstance;
 };
 
 let currentRpcIndex = 0;
+
+// Cached provider and contracts to avoid re-creating on every call
+let _cachedProvider = null;
+let _coreContract = null;
+let _viewContract = null;
 
 export const getProvider = async () => {
     // If we have a wallet connected via modal
@@ -57,9 +58,35 @@ export const getProvider = async () => {
         return new ethers.BrowserProvider(walletProvider);
     }
     
-    // Fallback to static RPC for viewing only
-    return new ethers.JsonRpcProvider(RPC_POOL[currentRpcIndex]);
+    // Reuse static provider instead of creating a new one every call
+    if (!_cachedProvider) {
+        _cachedProvider = new ethers.JsonRpcProvider(RPC_POOL[currentRpcIndex]);
+    }
+    return _cachedProvider;
 };
+
+export const getCoreContract = async () => {
+    if (!_coreContract) {
+        const provider = await getProvider();
+        _coreContract = new ethers.Contract(CONTRACT_ADDRESS, abi, provider);
+    }
+    return _coreContract;
+};
+
+export const getViewContract = async () => {
+    if (!_viewContract) {
+        const provider = await getProvider();
+        _viewContract = new ethers.Contract(VIEW_CONTRACT_ADDRESS, abi, provider);
+    }
+    return _viewContract;
+};
+
+export const invalidateProviderCache = () => {
+    _cachedProvider = null;
+    _coreContract = null;
+    _viewContract = null;
+};
+
 
 // Standard formatting helpers
 export const formatBNB = (wei) => {
@@ -88,8 +115,7 @@ export const switchNetwork = async () => {
 };
 
 export const checkRegistration = async (address) => {
-  const provider = await getProvider();
-  const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, provider);
+  const contract = await getCoreContract();
   try {
     const userId = await contract.nodeId(address);
     return Number(userId);
@@ -111,8 +137,7 @@ export const getWalletBalance = async (address) => {
 };
 
 export const getNodeData = async (nodeId) => {
-  const provider = await getProvider();
-  const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, provider);
+  const contract = await getCoreContract();
   try {
     const node = await contract.getNode(nodeId);
     return {
@@ -132,11 +157,8 @@ export const getNodeData = async (nodeId) => {
 };
 
 export const getRewardStats = async (nodeId) => {
-    const provider = await getProvider();
-    const viewContract = new ethers.Contract(VIEW_CONTRACT_ADDRESS, abi, provider);
-    const coreContract = new ethers.Contract(CONTRACT_ADDRESS, abi, provider);
-    
     try {
+      const viewContract = await getViewContract();
       const breakdown = await viewContract.getIncomeBreakdown(nodeId);
       return {
         total: formatBNB(breakdown[0] || 0n),
@@ -149,6 +171,7 @@ export const getRewardStats = async (nodeId) => {
       };
     } catch (error) {
       try {
+        const coreContract = await getCoreContract();
         const breakdown = await coreContract.getIncomeBreakdown(nodeId);
         return {
           total: formatBNB(breakdown.total),
@@ -166,12 +189,12 @@ export const getRewardStats = async (nodeId) => {
   };
   
   export const getMatrixLevelsData = async (nodeId) => {
-      const provider = await getProvider();
-      const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, provider);
+      const contract = await getCoreContract();
       try {
-          const [counts, rewards] = await Promise.all([
-              Promise.all([...Array(18)].map((_, i) => contract.getTeamSize(nodeId, i + 1))),
-              contract.getTierRewards(nodeId)
+          // Fetch rewards and all 18 team sizes in parallel (2 calls instead of 19)
+          const [rewards, ...counts] = await Promise.all([
+              contract.getTierRewards(nodeId),
+              ...Array.from({ length: 18 }, (_, i) => contract.getTeamSize(nodeId, i + 1))
           ]);
           return counts.map((count, i) => ({
               level: i + 1,
@@ -185,8 +208,7 @@ export const getRewardStats = async (nodeId) => {
   };
 
 export const getIncomeHistory = async (nodeId, length = 10) => {
-    const provider = await getProvider();
-    const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, provider);
+    const contract = await getCoreContract();
     try {
         const events = await contract.getIncome(nodeId, length);
         return events.map(e => ({
@@ -205,8 +227,7 @@ export const getIncomeHistory = async (nodeId, length = 10) => {
 };
 
 export const getTierCostsArray = async () => {
-    const provider = await getProvider();
-    const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, provider);
+    const contract = await getCoreContract();
     try {
         const costs = await contract.getTierCosts();
         return Array.from(costs);
@@ -217,8 +238,7 @@ export const getTierCostsArray = async () => {
 };
 
 export const getBNBPrice = async () => {
-    const provider = await getProvider();
-    const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, provider);
+    const contract = await getCoreContract();
     try {
         const price = await contract.bnbPrice();
         return Number(price);
@@ -228,8 +248,7 @@ export const getBNBPrice = async () => {
 };
 
 export const getTierCostValue = async (tierIndex) => {
-  const provider = await getProvider();
-  const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, provider);
+  const contract = await getCoreContract();
   try {
     const cost = await contract.getTierCost(tierIndex);
     return cost;
@@ -239,7 +258,6 @@ export const getTierCostValue = async (tierIndex) => {
 };
 
 export const createNodeTransaction = async (sponsorId) => {
-  const provider = await getProvider();
   const modal = getAppKitModal();
   const bridge = modal.getWalletProvider();
   if (!bridge.walletProvider) throw new Error("Wallet not connected");
@@ -254,7 +272,6 @@ export const createNodeTransaction = async (sponsorId) => {
 };
 
 export const upgradeTierTransaction = async (nodeId, toTier) => {
-  const provider = await getProvider();
   const modal = getAppKitModal();
   const bridge = modal.getWalletProvider();
   if (!bridge.walletProvider) throw new Error("Wallet not connected");
@@ -269,8 +286,7 @@ export const upgradeTierTransaction = async (nodeId, toTier) => {
 };
 
 export const getDirectReferralsList = async (nodeId, count = 20) => {
-    const provider = await getProvider();
-    const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, provider);
+    const contract = await getCoreContract();
     try {
         const ids = await Promise.all(
             [...Array(Math.min(count, 100))].map((_, i) => contract.teams(nodeId, 1, i))
@@ -291,8 +307,7 @@ export const getDirectReferralsList = async (nodeId, count = 20) => {
 };
 
 export const getMatrixTreeNodes = async (nodeId, level, count = 2) => {
-    const provider = await getProvider();
-    const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, provider);
+    const contract = await getCoreContract();
     try {
         const matrixLevel = Math.max(0, level - 1);
         const nodes = await contract.getMatrixUsers(nodeId, matrixLevel, 0, count);
@@ -310,8 +325,7 @@ export const getMatrixTreeNodes = async (nodeId, level, count = 2) => {
 };
 
 export const getUnilevelTreeNodes = async (nodeId, level, count = 20) => {
-    const provider = await getProvider();
-    const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, provider);
+    const contract = await getCoreContract();
     try {
         const unilevelLevel = Math.max(0, level - 1);
         const nodes = await contract.getNetworkNodes(nodeId, unilevelLevel, count);
@@ -329,8 +343,7 @@ export const getUnilevelTreeNodes = async (nodeId, level, count = 20) => {
 };
 
 export const getContractOwner = async () => {
-    const provider = await getProvider();
-    const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, provider);
+    const contract = await getCoreContract();
     try {
         const config = await contract.getConfig();
         return config._owner;

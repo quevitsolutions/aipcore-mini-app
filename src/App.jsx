@@ -1650,8 +1650,8 @@ const App = () => {
             )}
           </div>
         </div>
-  const renderLeaderboard = () => (
-    <div className="p-4 pb-24 h-full overflow-y-auto">
+
+        <div className="p-4 pb-24 h-full overflow-y-auto">
           <div className="flex justify-between items-center mb-6">
               <h2 className="text-3xl font-black text-white uppercase tracking-tighter">LEADERBOARD</h2>
               <div className="flex bg-white/10 p-1 rounded-xl">
@@ -1676,36 +1676,37 @@ const App = () => {
               </div>
           </div>
 
-        <div className="space-y-3">
-            {(leaderboardTab === 'coins' ? leaderboardData.coins : (leaderboardTab === 'tiers' ? leaderboardData.tiers : (leaderboardData.directs || []))).map((entry, index) => {
-                const isTop3 = index < 3;
-                const colors = ['#FFD700', '#C0C0C0', '#CD7F32']; // Gold, Silver, Bronze
-                return (
-                    <div 
-                        key={index} 
-                        className={`glass-card p-4 rounded-3xl flex justify-between items-center border transition-all ${isTop3 ? 'bg-gradient-to-r from-white/[0.05] to-transparent border-white/20' : 'border-white/5 bg-white/[0.01]'}`}
-                    >
-                        <div className="flex items-center space-x-4">
-                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs ${isTop3 ? '' : 'bg-white/5 text-white/30'}`} style={isTop3 ? { backgroundColor: colors[index], color: 'black' } : {}}>
-                                {index + 1}
-                            </div>
-                            <div>
-                                <p className="text-sm font-black text-white uppercase">{entry.username || `User #${entry.node_id}`}</p>
-                                <p className="text-[10px] font-black text-[#00ff88] uppercase tracking-widest opacity-60">ID {entry.node_id} • {entry.tier ? getTierDetails(entry.tier).name : 'GUEST'}</p>
-                            </div>
-                        </div>
-                        <div className="text-right">
-                            <p className="text-sm font-black text-white">{entry.score.toLocaleString()}</p>
-                            <p className="text-[9px] font-black opacity-30 uppercase tracking-tighter">
-                                {leaderboardTab === 'coins' ? 'AIP COINS' : (leaderboardTab === 'tiers' ? 'NODE TIER' : 'DIRECTS')}
-                            </p>
-                        </div>
-                    </div>
-                );
-            })}
+          <div className="space-y-3">
+              {(leaderboardTab === 'coins' ? leaderboardData.coins : (leaderboardTab === 'tiers' ? leaderboardData.tiers : (leaderboardData.directs || []))).map((entry, index) => {
+                  const isTop3 = index < 3;
+                  const colors = ['#FFD700', '#C0C0C0', '#CD7F32']; // Gold, Silver, Bronze
+                  return (
+                      <div 
+                          key={index} 
+                          className={`glass-card p-4 rounded-3xl flex justify-between items-center border transition-all ${isTop3 ? 'bg-gradient-to-r from-white/[0.05] to-transparent border-white/20' : 'border-white/5 bg-white/[0.01]'}`}
+                      >
+                          <div className="flex items-center space-x-4">
+                              <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs ${isTop3 ? '' : 'bg-white/5 text-white/30'}`} style={isTop3 ? { backgroundColor: colors[index], color: 'black' } : {}}>
+                                  {index + 1}
+                              </div>
+                              <div>
+                                  <p className="text-sm font-black text-white uppercase">{entry.username || `User #${entry.node_id}`}</p>
+                                  <p className="text-[10px] font-black text-[#00ff88] uppercase tracking-widest opacity-60">ID {entry.node_id} • {entry.tier ? getTierDetails(entry.tier).name : 'GUEST'}</p>
+                              </div>
+                          </div>
+                          <div className="text-right">
+                              <p className="text-sm font-black text-white">{entry.score.toLocaleString()}</p>
+                              <p className="text-[9px] font-black opacity-30 uppercase tracking-tighter">
+                                  {leaderboardTab === 'coins' ? 'AIP COINS' : (leaderboardTab === 'tiers' ? 'NODE TIER' : 'DIRECTS')}
+                              </p>
+                          </div>
+                      </div>
+                  );
+              })}
+          </div>
         </div>
     </div>
-);
+  );
 
   const renderAirdrop = () => (
     <div className="p-4 pb-24 h-full overflow-y-auto font-black">

@@ -9,7 +9,6 @@ server/node_modules
 .gitignore
 docker-compose.yml
 Dockerfile
-nginx.conf
 vps_setup_instructions.md
 implementation_plan*.md
 task*.md

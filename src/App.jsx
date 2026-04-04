@@ -316,12 +316,16 @@ const App = () => {
           ]);
           
           if (data) {
-            setNodeTier(data.tier);
-            setOnchainStats(data);
-          }
+            const coreTier = Number(data.tier);
+            const poolTier = (pData && pData.nfeTier !== undefined) ? Number(pData.nfeTier) : 0;
+            const unifiedTier = Math.max(coreTier, poolTier);
 
-          // Sync current state to backend (Tier + Telegram identity + Directs included)
-          syncUserToBackend(coinsRef.current, tapsRef.current, id, data?.tier || 0, telegramUser, data?.directNodes || 0);
+            setNodeTier(unifiedTier);
+            setOnchainStats(data);
+            
+            // Sync current state to backend (Unified Tier + Telegram identity + Directs included)
+            syncUserToBackend(coinsRef.current, tapsRef.current, id, unifiedTier, telegramUser, data?.directNodes || 0);
+          }
 
           if (rewards) setRewardStats(rewards);
           if (matrix) setMatrixData(matrix);
@@ -1316,9 +1320,9 @@ const App = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
             {tierCosts.map((cost, idx) => {
                 const targetTier = idx + 1;
-                const isUnlocked = nodeTier >= targetTier;
-                const isNext = nodeTier === (targetTier - 1);
                 const isRegistration = idx === 0;
+                const isUnlocked = nodeTier >= targetTier || (isRegistration && nodeId > 0);
+                const isNext = nodeTier === (targetTier - 1) && !isUnlocked;
 
                 return (
                     <div key={idx} className={`glass-card p-4 rounded-2xl flex justify-between items-center border ${isUnlocked ? 'bg-[#00ff88]/10 border-[#00ff88]/30' : isNext ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-white/5 border-white/10'}`}>

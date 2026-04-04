@@ -165,14 +165,14 @@ export const getNodeData = async (nodeId) => {
       contract.getNode(nodeId),
       contract.getNodeStats(nodeId).catch(() => null)
     ]);
+    const isValidStats = stats && Number(stats[0]) > 0;
     return {
       wallet: node.wallet,
       nodeId: Number(node.nodeId),
       sponsor: Number(node.sponsor),
-      // Use stats if available for the most current tier/counts, otherwise fallback to struct
-      tier: stats ? Number(stats[0]) : Number(node.tier),
-      directNodes: stats ? Number(stats[1]) : Number(node.directNodes || 0),
-      totalMatrixNodes: stats ? Number(stats[2]) : Number(node.totalMatrixNodes || 0),
+      tier: isValidStats ? Number(stats[0]) : Number(node.tier),
+      directNodes: isValidStats ? Number(stats[1]) : Number(node.directNodes || 0),
+      totalMatrixNodes: isValidStats ? Number(stats[2]) : Number(node.totalMatrixNodes || 0),
       joinedAt: Number(node.joinedAt),
       totalContribution: formatBNB(node.totalContribution),
     };

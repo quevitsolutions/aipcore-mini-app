@@ -1442,12 +1442,18 @@ const App = () => {
 
         <div className="pt-6 border-t border-white/5">
           {userAddress ? (
-            <div className="glass-card p-4 rounded-2xl border-white/5">
-              <div className="flex justify-between items-center mb-2">
+            <div className="glass-card p-4 rounded-2xl border-white/5 group relative overflow-hidden">
+              <div className="flex justify-between items-center mb-2 relative z-10 transition-transform duration-300 group-hover:-translate-y-8">
                 <span className="text-[11px] font-black opacity-100 text-[#00ff88] uppercase tracking-widest">Active Wallet</span>
                 <div className="w-2 h-2 bg-[#00ff88] rounded-full animate-pulse"></div>
               </div>
-              <p className="text-[12px] font-mono opacity-100 text-white truncate font-bold">{userAddress}</p>
+              <p className="text-[12px] font-mono opacity-100 text-white truncate font-bold relative z-10 transition-transform duration-300 group-hover:-translate-y-8">{userAddress}</p>
+              
+              <div className="absolute inset-x-0 bottom-0 top-0 flex items-center justify-center translate-y-full group-hover:translate-y-0 transition-transform duration-300 bg-red-600/20 backdrop-blur-md z-20">
+                <button onClick={handleWalletDisconnect} className="w-full h-full text-red-500 font-black text-[11px] uppercase tracking-widest hover:text-white transition-colors">
+                  Disconnect
+                </button>
+              </div>
             </div>
           ) : (
             <button onClick={handleWalletConnect} className="w-full py-4 bg-white text-black font-black rounded-2xl text-[10px] uppercase tracking-widest active:scale-95 transition-all">Connect Explorer</button>
@@ -1463,9 +1469,9 @@ const App = () => {
           <header className="px-6 pt-8 pb-6 lg:pb-0 flex justify-between items-center lg:hidden">
               <div className="flex items-center space-x-4">
                   <div className="w-12 h-12 bg-[#00ff88] rounded-2xl flex items-center justify-center p-2.5 shadow-[0_0_20px_rgba(0,255,136,0.2)]"><AipLogo className="text-black w-full h-full" /></div>
-                  <div className="flex flex-col">{userAddress ? (<><div className="flex items-center space-x-2"><span className="text-[12px] font-black uppercase tracking-widest text-[#00ff88]">{nodeId > 0 ? `NODE #${nodeId}` : 'GUEST'}</span><span className="text-[12px] font-black bg-[#00ff88]/10 px-2 py-0.5 rounded text-[#00ff88]">{bnbBalance} BNB</span></div><span className="text-sm font-mono font-medium opacity-100 text-white">{userAddress.slice(0,6)}...{userAddress.slice(-4)}</span></>) : (<><span className="text-[12px] font-black uppercase tracking-widest text-red-500">Disconnected</span><span className="text-sm font-bold">Anonymous AIPCORE Warrior</span></>)}</div>
+                  <div className="flex flex-col">{userAddress ? (<><div className="flex items-center space-x-2"><span className="text-[12px] font-black uppercase tracking-widest text-[#00ff88]">{nodeId > 0 ? `NODE #${nodeId}` : 'GUEST'}</span><span className="text-[12px] font-black bg-[#00ff88]/10 px-2 py-0.5 rounded text-[#00ff88]">{bnbBalance} BNB</span></div></>) : (<><span className="text-[12px] font-black uppercase tracking-widest text-red-500">Disconnected</span><span className="text-sm font-bold">Anonymous AIPCORE Warrior</span></>)}</div>
               </div>
-              <div className="flex items-center space-x-3">{isLoading && <Loader2 className="w-5 h-5 animate-spin text-[#00ff88]" />}<button onClick={userAddress ? handleWalletDisconnect : handleWalletConnect} className="p-3 bg-white/5 rounded-2xl border border-white/5 active:scale-90 transition-transform group relative"><Wallet size={20} className={userAddress ? 'text-[#00ff88]' : 'opacity-100 text-white'} />{userAddress && <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 border-2 border-black rounded-full scale-0 group-hover:scale-100 transition-transform" />}</button></div>
+              <div className="flex items-center space-x-3">{isLoading && <Loader2 className="w-5 h-5 animate-spin text-[#00ff88]" />}<appkit-button size="sm" balance="hide" /></div>
           </header>
 
           <main className="flex-grow z-10 overflow-hidden main-content-scroll">

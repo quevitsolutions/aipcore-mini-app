@@ -974,6 +974,23 @@ const App = () => {
   const handleCreateNode = async () => {
     setIsProcessing(true);
     try {
+      // 1. Silent Pre-verification: Check if address is already registered
+      const existingId = await checkRegistration(userAddress);
+      if (existingId > 0) {
+        console.log("Existing node detected during registration click:", existingId);
+        setNodeId(existingId);
+        await syncBlockchainData(userAddress);
+        if (window.Telegram?.WebApp) {
+           window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+           window.Telegram.WebApp.showPopup({ 
+             title: 'Already Registered', 
+             message: `Warrior Node #${existingId} detected for this wallet. Refreshing your dashboard.`,
+             buttons: [{ type: 'ok' }]
+           });
+        }
+        return;
+      }
+
       // Prioritize backend sponsor, then local storage, then default
       let sponsorId = 36999;
       const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;

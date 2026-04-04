@@ -1163,34 +1163,45 @@ const App = () => {
           </div>
       </div>
 
-      {/* 2. Massive Coin Balance (Top Center) */}
-      <div className="mt-6 flex flex-col items-center justify-center z-20">
-          <div className="mb-4 flex flex-col items-center">
-              <div className="flex items-center space-x-2 text-white/50 font-black uppercase tracking-[0.3em] text-[10px] mb-1">
-                <Flame size={12} className="text-orange-500 fill-orange-500" />
-                <span>Energy Core</span>
+      {/* 2. Massive Stats Bar (Top Left & Right) */}
+      <div className="px-5 mt-4 flex justify-between items-end z-20 shrink-0">
+          {/* Left: Energy Core */}
+          <div className="flex flex-col items-start bg-white/5 px-3 py-2 rounded-2xl border border-white/5 backdrop-blur-sm shadow-xl">
+              <div className="flex items-center space-x-2 text-white/40 font-black uppercase tracking-[0.2em] text-[8px] mb-0.5">
+                <Flame size={10} className="text-orange-500 fill-orange-500" />
+                <span>Energy</span>
               </div>
-              <div className="text-2xl font-black text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]">
-                {energy} <span className="opacity-30 text-lg">/ {maxEnergy}</span>
+              <div className="text-[13px] font-black text-white leading-none">
+                {energy} <span className="opacity-30 text-[10px]">/ {maxEnergy}</span>
               </div>
           </div>
 
-          <div className="flex items-center space-x-3 mb-2">
-              <img src={dollarCoin} alt="AIP" className="w-10 h-10 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]" />
-              <span className="text-5xl font-black text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]">{aipCoins.toLocaleString()}</span>
+          {/* Right: Coin Balance */}
+          <div className="flex flex-col items-end bg-[#00ff88]/5 px-3 py-2 rounded-2xl border border-[#00ff88]/10 backdrop-blur-sm shadow-xl">
+              <div className="flex items-center space-x-2 text-[#00ff88]/40 font-black uppercase tracking-[0.2em] text-[8px] mb-0.5">
+                <Pickaxe size={10} />
+                <span>Balance</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <img src={dollarCoin} alt="AIP" className="w-4 h-4 shadow-lg" />
+                <span className="text-[16px] font-black text-white leading-none tracking-tight">{aipCoins.toLocaleString()}</span>
+              </div>
           </div>
-          <div className="flex items-center space-x-2 px-3 py-1 bg-white/10 rounded-full">
-              <span className="text-[10px] font-black text-[#00ff88] uppercase tracking-widest flex items-center"><Pickaxe size={12} className="mr-1"/> +{tapValue} per tap</span>
+      </div>
+
+      <div className="flex flex-col items-center justify-center mt-2 z-20 shrink-0">
+          <div className="flex items-center space-x-2 px-3 py-1 bg-white/10 rounded-full border border-white/5">
+              <span className="text-[9px] font-black text-[#00ff88] uppercase tracking-widest flex items-center"><Zap size={10} className="mr-1"/> +{tapValue} Per Tap</span>
           </div>
       </div>
 
       {/* 3. The Hook / Tap Character (Center) */}
-      <div className="flex-grow flex flex-col items-center justify-center relative select-none z-10 mt-2">
+      <div className="flex-grow flex flex-col items-center justify-center relative select-none z-10 min-h-0 overflow-visible">
         <div 
-          className="click-card relative w-64 h-64 rounded-full flex items-center justify-center cursor-pointer overflow-hidden shadow-[0_0_50px_rgba(0,255,136,0.15)] bg-gradient-to-br from-[#00ff88]/5 to-transparent border-4 border-[#00ff88]/20"
+          className="click-card relative w-56 h-56 sm:w-64 sm:h-64 rounded-full flex items-center justify-center cursor-pointer overflow-hidden shadow-[0_0_50px_rgba(0,255,136,0.15)] bg-gradient-to-br from-[#00ff88]/5 to-transparent border-[3px] border-[#00ff88]/20 transition-all duration-300"
           onClick={handleTap}
         >
-          <img src={mainCharacter} alt="AIP Warrior" className="w-48 h-48 pointer-events-none transform active:scale-95 transition-transform" />
+          <img src={mainCharacter} alt="AIP Warrior" className="w-40 h-40 sm:w-48 sm:h-48 pointer-events-none transform active:scale-90 transition-transform" />
           
           {clicks.map((click) => (
             <div

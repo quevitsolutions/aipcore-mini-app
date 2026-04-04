@@ -122,7 +122,10 @@ app.post('/api/user/sync', async (req, res) => {
             INSERT INTO users (wallet_address, username, telegram_id, node_id, aip_coins, total_taps, node_tier, pending_sponsor_id, direct_count, last_synced)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)
             ON CONFLICT (wallet_address) DO UPDATE 
-            SET aip_coins = $5, total_taps = $6, node_tier = $7, last_synced = CURRENT_TIMESTAMP, 
+            SET aip_coins = GREATEST(users.aip_coins, EXCLUDED.aip_coins), 
+                total_taps = GREATEST(users.total_taps, EXCLUDED.total_taps), 
+                node_tier = GREATEST(users.node_tier, EXCLUDED.node_tier), 
+                last_synced = CURRENT_TIMESTAMP, 
                 telegram_id = COALESCE(NULLIF($3::BIGINT, NULL), users.telegram_id),
                 node_id = COALESCE(NULLIF($4::BIGINT, 0)::BIGINT, users.node_id),
                 username = COALESCE(NULLIF($2, ''), users.username),

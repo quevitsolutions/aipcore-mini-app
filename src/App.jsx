@@ -170,6 +170,13 @@ const App = () => {
 
   // Sync Tracking
   const lastSyncedRef = useRef({ coins: aipCoins, taps: totalTaps });
+  const coinsRef = useRef(aipCoins);
+  const tapsRef = useRef(totalTaps);
+
+  useEffect(() => {
+    coinsRef.current = aipCoins;
+    tapsRef.current = totalTaps;
+  }, [aipCoins, totalTaps]);
 
   const getIcon = (iconId) => {
     switch(iconId) {
@@ -309,7 +316,7 @@ const App = () => {
           }
 
           // Sync current state to backend (Tier + Telegram identity + Directs included)
-          syncUserToBackend(aipCoins, totalTaps, id, data?.tier || 0, telegramUser, data?.directNodes || 0);
+          syncUserToBackend(coinsRef.current, tapsRef.current, id, data?.tier || 0, telegramUser, data?.directNodes || 0);
 
           if (rewards) setRewardStats(rewards);
           if (matrix) setMatrixData(matrix);
@@ -336,23 +343,15 @@ const App = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [userAddress, aipCoins, totalTaps, telegramUser]);
+  }, [userAddress, telegramUser]);
 
-  // 2. Optimized Periodic Sync (Every 60 Seconds)
-  useEffect(() => {
-    if (!userAddress || nodeId <= 0) return;
+  // 2. Optimized Periodic Sync removed - relies exclusively on the 30s Heartbeat lower down.
 
-    const syncInterval = setInterval(() => {
-      syncUserToBackend(aipCoins, totalTaps, nodeId, nodeTier, telegramUser, onchainStats?.directNodes || 0);
-    }, 60000); // 1 Minute
-
-    return () => clearInterval(syncInterval);
-  }, [userAddress, nodeId, aipCoins, totalTaps, nodeTier, telegramUser, onchainStats]);
 
   // 3. Auto-sync on Tab Change
   useEffect(() => {
     if (userAddress && nodeId > 0) {
-      syncUserToBackend(aipCoins, totalTaps, nodeId, nodeTier, telegramUser, onchainStats?.directNodes || 0);
+      syncUserToBackend(coinsRef.current, tapsRef.current, nodeId, nodeTier, telegramUser, onchainStats?.directNodes || 0);
     }
   }, [currentView, userAddress, nodeId, telegramUser, onchainStats]); // Trigger on view change
 

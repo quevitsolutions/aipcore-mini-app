@@ -1299,10 +1299,9 @@ const App = () => {
 
 
 
-        )}
-      </div>
+
     );
-  };
+
   const renderEarn = () => (
     <div className="p-4 pb-24 h-full overflow-y-auto">
       <h2 className="text-3xl font-black mb-1 text-[#00ff88]">EARN REWARDS</h2>

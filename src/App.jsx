@@ -1703,7 +1703,8 @@ const App = () => {
             })}
         </div>
     </div>
-  );
+  </div>
+);
 
   const renderAirdrop = () => (
     <div className="p-4 pb-24 h-full overflow-y-auto font-black">

@@ -428,7 +428,7 @@ const App = () => {
       const startParam = tg.initDataUnsafe?.start_param;
       if (startParam) {
         localStorage.setItem('pendingSponsor', startParam);
-        console.log("Captured Referral Sponsor:", startParam);
+        console.log("Captured Referral Sponsor (Telegram):", startParam);
         
         // Record the Guest Click/Join on Backend
         fetch(`${BACKEND_URL}/referrals/click`, {
@@ -439,6 +439,23 @@ const App = () => {
             guest_username: tgUser?.username || tgUser?.first_name || "Guest"
           })
         }).catch(err => console.error("Guest record failed:", err));
+      }
+    } else {
+      // Browser Context: Capture Referral from URL search params
+      const urlParams = new URLSearchParams(window.location.search);
+      const webRef = urlParams.get('ref');
+      if (webRef) {
+        localStorage.setItem('pendingSponsor', webRef);
+        console.log("Captured Referral Sponsor (Web):", webRef);
+        
+        fetch(`${BACKEND_URL}/referrals/click`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            referrer_id: webRef,
+            guest_username: "Web Guest"
+          })
+        }).catch(err => console.error("Web guest record failed:", err));
       }
     }
 
@@ -1110,27 +1127,54 @@ const App = () => {
       {/* 2. Dashboard HUD (Top) */}
       <div className="px-5 pt-3 z-20">
           <div className="glass-card p-3 rounded-2xl flex justify-between items-center border border-white/10 bg-white/[0.03]">
-              <div className="text-center w-1/3 border-r border-white/10">
-                  <p className="text-[9px] font-black uppercase text-[#00ff88]/60 tracking-widest mb-0.5">Earned (BNB)</p>
-                  <p className="text-[14px] font-black text-[#00ff88]">{rewardStats ? rewardStats.total : '0.0000'}</p>
-              </div>
-              <div className="text-center w-1/3 border-r border-white/10">
-                  <p className="text-[9px] font-black uppercase text-white/50 tracking-widest mb-0.5">18-Lvl Team</p>
-                  <p className="text-[14px] font-black text-white">{onchainStats ? onchainStats.totalMatrixNodes : '0'}</p>
-              </div>
-              <div className="text-center w-1/4 border-r border-white/10">
-                  <p className="text-[9px] font-black uppercase text-white/50 tracking-widest mb-0.5">Level</p>
-                  <p className="text-[12px] font-black" style={{ color: tierInfo.color }}>{tierInfo.name}</p>
-              </div>
-              <div className="text-center w-1/4">
-                  <p className="text-[9px] font-black uppercase text-white/50 tracking-widest mb-0.5">Node ID</p>
-                  <p className="text-[14px] font-black text-white">{nodeId > 0 ? `#${nodeId}` : 'NONE'}</p>
-              </div>
+              {nodeId === 0 ? (
+                // Guest / Lvl 0 Organized View
+                <>
+                  <div className="text-center w-1/2 border-r border-white/10">
+                      <p className="text-[9px] font-black uppercase text-[#00ff88]/60 tracking-widest mb-0.5">Potential Yield</p>
+                      <p className="text-[14px] font-black text-[#00ff88]">LOCKED</p>
+                  </div>
+                  <div className="text-center w-1/2">
+                      <p className="text-[9px] font-black uppercase text-white/50 tracking-widest mb-0.5">Status</p>
+                      <p className="text-[12px] font-black text-orange-500 uppercase">RECRUIT</p>
+                  </div>
+                </>
+              ) : (
+                // Owner View
+                <>
+                  <div className="text-center w-1/3 border-r border-white/10">
+                      <p className="text-[9px] font-black uppercase text-[#00ff88]/60 tracking-widest mb-0.5">Earned (BNB)</p>
+                      <p className="text-[14px] font-black text-[#00ff88]">{rewardStats ? rewardStats.total : '0.0000'}</p>
+                  </div>
+                  <div className="text-center w-1/3 border-r border-white/10">
+                      <p className="text-[9px] font-black uppercase text-white/50 tracking-widest mb-0.5">18-Lvl Team</p>
+                      <p className="text-[14px] font-black text-white">{onchainStats ? onchainStats.totalMatrixNodes : '0'}</p>
+                  </div>
+                  <div className="text-center w-1/4 border-r border-white/10">
+                      <p className="text-[9px] font-black uppercase text-white/50 tracking-widest mb-0.5">Level</p>
+                      <p className="text-[12px] font-black" style={{ color: tierInfo.color }}>{tierInfo.name}</p>
+                  </div>
+                  <div className="text-center w-1/4">
+                      <p className="text-[9px] font-black uppercase text-white/50 tracking-widest mb-0.5">Node ID</p>
+                      <p className="text-[14px] font-black text-white">{nodeId > 0 ? `#${nodeId}` : 'NONE'}</p>
+                  </div>
+                </>
+              )}
           </div>
       </div>
 
       {/* 2. Massive Coin Balance (Top Center) */}
       <div className="mt-6 flex flex-col items-center justify-center z-20">
+          <div className="mb-4 flex flex-col items-center">
+              <div className="flex items-center space-x-2 text-white/50 font-black uppercase tracking-[0.3em] text-[10px] mb-1">
+                <Flame size={12} className="text-orange-500 fill-orange-500" />
+                <span>Energy Core</span>
+              </div>
+              <div className="text-2xl font-black text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.2)]">
+                {energy} <span className="opacity-30 text-lg">/ {maxEnergy}</span>
+              </div>
+          </div>
+
           <div className="flex items-center space-x-3 mb-2">
               <img src={dollarCoin} alt="AIP" className="w-10 h-10 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]" />
               <span className="text-5xl font-black text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]">{aipCoins.toLocaleString()}</span>
@@ -1196,14 +1240,7 @@ const App = () => {
 
       {/* 5. Energy Bar (Absolute Bottom) */}
       <div className="px-6 pb-24 z-20">
-        <div className="flex justify-between items-end mb-2">
-          <div className="flex items-center space-x-2">
-            <Flame className="w-6 h-6 text-orange-500 fill-orange-500" />
-            <span className="text-lg font-black text-white">{energy} <span className="text-sm opacity-50">/ {maxEnergy}</span></span>
-          </div>
-          <span className="text-[12px] font-black text-[#00ff88] uppercase tracking-widest flex items-center space-x-1"><SettingsIcon size={12}/> <span>Lvl {nodeTier}</span></span>
-        </div>
-        <div className="w-full h-3 bg-white/10 rounded-full overflow-hidden border border-white/5">
+        <div className="w-full h-3 bg-white/10 rounded-full overflow-hidden border border-white/5 translate-y-2">
           <div className="progress-gradient h-full transition-all duration-300" style={{ width: `${(energy / maxEnergy) * 100}%` }}/>
         </div>
       </div>
@@ -1358,22 +1395,49 @@ const App = () => {
               </div>
 
               {nodeId > 0 ? (
-                <div className="space-y-3">
-                  <div className="p-3 bg-black/30 rounded-2xl border border-white/5 flex items-center justify-between">
-                    <span className="text-[11px] font-mono text-white/60 truncate flex-1">t.me/AIPCoreBot?start={nodeId}</span>
-                    <button
-                      onClick={handleCopyAffiliateLink}
-                      className="ml-3 p-2 bg-[#00ff88]/20 rounded-xl transition-all active:scale-90"
-                    >
-                      <Copy size={14} className="text-[#00ff88]" />
-                    </button>
+                <div className="space-y-4">
+                  {/* Telegram Bot Link */}
+                  <div className="space-y-2">
+                    <p className="text-[9px] font-black text-[#00ff88] uppercase tracking-widest ml-1">Telegram Bot Link</p>
+                    <div className="p-3 bg-black/30 rounded-2xl border border-white/5 flex items-center justify-between">
+                      <span className="text-[11px] font-mono text-white/60 truncate flex-1">t.me/AIPCoreBot?start={nodeId}</span>
+                      <button
+                        onClick={() => {
+                          const url = `https://t.me/AIPCoreBot?start=${nodeId}`;
+                          if (navigator.clipboard) navigator.clipboard.writeText(url);
+                          triggerHaptic('medium');
+                        }}
+                        className="ml-3 p-2 bg-[#00ff88]/20 rounded-xl transition-all active:scale-90"
+                      >
+                        <Copy size={14} className="text-[#00ff88]" />
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Web Domain Link */}
+                  <div className="space-y-2">
+                    <p className="text-[9px] font-black text-[#00ccff] uppercase tracking-widest ml-1">Web Domain Link</p>
+                    <div className="p-3 bg-black/30 rounded-2xl border border-white/5 flex items-center justify-between">
+                      <span className="text-[11px] font-mono text-white/60 truncate flex-1">aipcore.online?ref={nodeId}</span>
+                      <button
+                        onClick={() => {
+                          const url = `https://aipcore.online?ref=${nodeId}`;
+                          if (navigator.clipboard) navigator.clipboard.writeText(url);
+                          triggerHaptic('medium');
+                        }}
+                        className="ml-3 p-2 bg-[#00ccff]/20 rounded-xl transition-all active:scale-90"
+                      >
+                        <Copy size={14} className="text-[#00ccff]" />
+                      </button>
+                    </div>
+                  </div>
+
                   <button
                     onClick={handleInvite}
                     className="w-full py-4 bg-white text-black font-black rounded-2xl flex items-center justify-center space-x-3 active:scale-[0.98] transition-transform shadow-xl text-[13px]"
                   >
                     <Share2 size={18} />
-                    <span>SHARE AFFILIATE LINK</span>
+                    <span>SHARE ALL LINKS</span>
                   </button>
                 </div>
               ) : (

@@ -50,7 +50,12 @@ const initDB = async () => {
                 node_tier BIGINT DEFAULT 0
             );
 
+            -- Auto-Migration: Ensure all columns exist for old tables
             ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_id BIGINT;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS node_id BIGINT;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS aip_coins BIGINT DEFAULT 0;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS total_taps BIGINT DEFAULT 0;
+            ALTER TABLE users ADD COLUMN IF NOT EXISTS node_tier BIGINT DEFAULT 0;
 
             CREATE TABLE IF NOT EXISTS referrals (
                 id SERIAL PRIMARY KEY,
@@ -66,11 +71,12 @@ const initDB = async () => {
                 link TEXT
             );
         `);
-        console.log('Database tables initialized.');
+        console.log('Database tables and auto-migrations initialized.');
     } catch (err) {
         console.error('Error initializing database:', err);
     }
 };
+
 
 initDB();
 

@@ -159,20 +159,22 @@ export const getWalletBalance = async (address) => {
 };
 
 export const getNodeData = async (nodeId) => {
-  const contract = await getCoreContract();
   try {
-    // Parallel fetch for basic info and live stats
+    const [coreContract, viewContract] = await Promise.all([
+      getCoreContract(),
+      getViewContract()
+    ]);
+
+    // Attempt to fetch stats from VIEW_CONTRACT (source of truth for calculated counts)
+    // Fall back to CORE_CONTRACT only if VIEW_CONTRACT fails
     const [node, stats] = await Promise.all([
-      contract.getNode(nodeId),
-      contract.getNodeStats(nodeId).catch(err => {
-        console.warn(`Stats fetch failed for node ${nodeId}, falling back to struct.`, err);
-        return null;
-      })
+      coreContract.getNode(nodeId),
+      viewContract.getNodeStats(nodeId).catch(() => coreContract.getNodeStats(nodeId).catch(() => null))
     ]);
 
     if (!node || node.wallet === ethers.ZeroAddress) return null;
 
-    // Merge logic: stats mapping is source of truth for counts, node struct is fallback
+    // source of truth for counts and tier: stats aggregator
     const liveTier = (stats && stats[0] !== undefined) ? Number(stats[0]) : Number(node.tier);
     const liveDirects = (stats && stats[1] !== undefined) ? Number(stats[1]) : Number(node.directNodes || 0);
     const liveMatrix = (stats && stats[2] !== undefined) ? Number(stats[2]) : Number(node.totalMatrixNodes || 0);

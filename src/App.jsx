@@ -454,6 +454,257 @@ const App = () => {
     return () => clearInterval(poolSync);
   }, [nodeId]);
 
+  const renderPool = () => {
+    if (!rewardPoolData) {
+      return (
+        <div className="p-4 pb-24 h-full flex flex-col items-center justify-center text-center">
+          <div className="w-24 h-24 bg-[#00ff88]/5 rounded-full flex items-center justify-center mb-8 border border-[#00ff88]/10 animate-pulse">
+            <Flame className="w-12 h-12 text-[#00ff88] opacity-20" />
+          </div>
+          <h3 className="text-2xl font-black text-white uppercase mb-3 tracking-tighter">Initializing Pool</h3>
+          <p className="text-[10px] opacity-40 uppercase tracking-[0.2em] max-w-[220px] font-bold leading-relaxed">Securely synchronizing your node weight with the global reward protocol...</p>
+        </div>
+      );
+    }
+
+    const { 
+      currentPoolId, 
+      poolName, 
+      claimable, 
+      totalEarned, 
+      remainingCap, 
+      lifetimeCap, 
+      isQualifiedForNext, 
+      nextPoolId, 
+      nfeTier,
+      missingRequirements
+    } = rewardPoolData;
+
+    const BRONZE_TIER = 6, SILVER_TIER = 10, GOLD_TIER = 14;
+    const BRONZE_DIRECT = 2, SILVER_DIRECT = 5, GOLD_DIRECT = 10;
+    const BRONZE_TEAM = 62, SILVER_TEAM = 2046, GOLD_TEAM = 32766;
+
+    const userTier    = Number(nfeTier) || nodeTier || 0;
+    const userDirects = onchainStats?.directNodes || 0;
+    const userTeam    = onchainStats?.totalMatrixNodes || 0;
+
+    const bronzeQualified = userTier >= BRONZE_TIER && userDirects >= BRONZE_DIRECT && userTeam >= BRONZE_TEAM;
+    const silverQualified = userTier >= SILVER_TIER && userDirects >= SILVER_DIRECT && userTeam >= SILVER_TEAM;
+    const goldQualified   = userTier >= GOLD_TIER   && userDirects >= GOLD_DIRECT   && userTeam >= GOLD_TEAM;
+
+    const getPoolColor = (id) => {
+      if (id === 3 || poolName === 'Gold') return '#FFD700';
+      if (id === 2 || poolName === 'Silver') return '#C0C0C0';
+      return '#CD7F32';
+    };
+    
+    const poolColor = currentPoolId > 0 ? getPoolColor(currentPoolId) : '#00ff88';
+    
+    const nextPoolName = nextPoolId === 3 ? 'GOLD' : nextPoolId === 2 ? 'SILVER' : 'BRONZE';
+    const nextPoolColor = getPoolColor(nextPoolId);
+
+    const capPct = (lifetimeCap && Number(lifetimeCap) > 0)
+      ? Math.min(100, Math.max(2, Math.round(((Number(lifetimeCap) - Number(remainingCap)) / Number(lifetimeCap)) * 100)))
+      : 0;
+
+    const RequirementRow = ({ label, current, required, missing, isMet }) => (
+      <div className="flex justify-between items-center py-2 border-b border-white/5 last:border-0">
+        <div>
+          <p className="text-[10px] font-black opacity-40 uppercase tracking-widest">{label}</p>
+          <p className={`text-sm font-black ${isMet ? 'text-[#00ff88]' : 'text-white'}`}>
+            {current} <span className="opacity-30 mx-1">/</span> {required}
+          </p>
+        </div>
+        <div className="text-right">
+          {isMet ? (
+            <div className="w-6 h-6 bg-[#00ff88]/20 rounded-full flex items-center justify-center">
+              <Check size={14} className="text-[#00ff88]" />
+            </div>
+          ) : (
+            <div className="px-3 py-1 bg-white/5 rounded-lg border border-white/10">
+              <span className="text-[9px] font-black text-white/60 uppercase">-{missing} needed</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+
+    return (
+      <div className="p-4 pb-32 h-full overflow-y-auto no-scrollbar relative">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-[#00ff88]/5 rounded-full blur-[100px] -z-10 pointer-events-none"></div>
+
+        <div className="flex justify-between items-start mb-8 px-2">
+          <div>
+            <h2 className="text-4xl font-black text-white tracking-tighter leading-none mb-2">REWARDS</h2>
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-[#00ff88] rounded-full animate-pulse"></div>
+              <p className="text-[10px] text-[#00ff88] font-black uppercase tracking-[0.2em] italic">Active Protocol v2.5</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className={`px-4 py-1.5 rounded-2xl border-2 backdrop-blur-xl mb-1 shadow-lg shadow-black/20`} 
+                 style={{ borderColor: `${poolColor}40`, backgroundColor: `${poolColor}10` }}>
+              <span className="text-[11px] font-black uppercase tracking-widest drop-shadow-sm" style={{ color: poolColor }}>
+                {currentPoolId > 0 ? poolName.toUpperCase() : 'NO RANK'}
+              </span>
+            </div>
+            <p className="text-[9px] font-black opacity-30 uppercase tracking-[0.1em]">NODE ID #{nodeId}</p>
+          </div>
+        </div>
+
+        {currentPoolId > 0 && (
+          <div className="glass-card p-8 rounded-[48px] mb-8 border-white/10 bg-gradient-to-br from-white/[0.08] to-transparent shadow-[0_20px_40px_rgba(0,0,0,0.4)] relative overflow-hidden group">
+            <div className="absolute -top-24 -right-24 w-64 h-64 rounded-full blur-[80px] opacity-20 transition-all duration-1000 group-hover:scale-125" style={{ backgroundColor: poolColor }} />
+            
+            <div className="flex justify-between items-end mb-8 relative z-10">
+              <div>
+                <p className="text-[11px] font-black opacity-40 uppercase tracking-[0.2em] mb-2">Available for Claim</p>
+                <div className="flex items-baseline space-x-3">
+                  <h4 className="text-5xl font-black text-white tracking-tighter leading-none">{formatBNB(claimable)}</h4>
+                  <span className="text-xl font-black text-[#00ff88]">BNB</span>
+                </div>
+              </div>
+              <button
+                onClick={handlePoolClaim}
+                disabled={isProcessing || Number(claimable) === 0}
+                className="w-16 h-16 rounded-3xl flex items-center justify-center shadow-2xl active:scale-90 disabled:opacity-30 disabled:grayscale transition-all"
+                style={{ backgroundColor: Number(claimable) > 0 ? poolColor : '#ffffff20' }}
+              >
+                {isProcessing ? <Loader2 size={24} className="animate-spin text-black" /> : <ArrowUpRight size={28} className={Number(claimable) > 0 ? 'text-black' : 'text-white/20'} />}
+              </button>
+            </div>
+
+            <div className="space-y-3 relative z-10">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-[10px] font-black opacity-40 uppercase tracking-widest">Yield Evolution</span>
+                <span className="text-[10px] font-black text-white bg-white/10 px-3 py-1 rounded-full">{capPct}% CAP REACHED</span>
+              </div>
+              <div className="w-full h-3 bg-black/40 rounded-full overflow-hidden p-0.5 border border-white/5 shadow-inner">
+                <div
+                  className="h-full rounded-full transition-all duration-1000 relative"
+                  style={{ width: `${capPct}%`, background: `linear-gradient(90deg, ${poolColor}, #ffffff88)` }}
+                >
+                  <div className="absolute top-0 right-0 w-2 h-full bg-white opacity-40 animate-pulse"></div>
+                </div>
+              </div>
+              <div className="flex justify-between items-center px-1">
+                <span className="text-[9px] opacity-30 font-black uppercase">Earnings: {formatBNB(totalEarned)}</span>
+                <span className="text-[9px] opacity-30 font-black uppercase">Limit: {formatBNB(lifetimeCap)}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-3 gap-3 mb-8">
+          {[
+            { id: 1, name: 'BRONZE', color: '#CD7F32', isQualified: bronzeQualified, isActive: currentPoolId === 1 },
+            { id: 2, name: 'SILVER', color: '#C0C0C0', isQualified: silverQualified, isActive: currentPoolId === 2 },
+            { id: 3, name: 'GOLD', color: '#FFD700', isQualified: goldQualified, isActive: currentPoolId === 3 },
+          ].map((item) => (
+            <div key={item.name} 
+                 className={`glass-card p-4 rounded-[32px] border transition-all duration-500 relative overflow-hidden flex flex-col items-center justify-center ${item.isActive ? 'scale-105 shadow-2xl border-white/40' : 'opacity-40 grayscale border-white/5'}`}
+                 style={{ backgroundColor: item.isActive ? `${item.color}20` : undefined, borderColor: item.isActive ? item.color : undefined }}>
+              <div className="mb-2 p-2 rounded-xl bg-white/5">
+                <Flame size={18} style={{ color: item.isQualified ? item.color : '#ffffff20' }} fill={item.isQualified ? item.color : 'transparent'} />
+              </div>
+              <p className="text-[8px] font-black tracking-widest mb-1" style={{ color: item.color }}>{item.isQualified ? item.name : 'LOCKED'}</p>
+              {item.isActive && <div className="absolute bottom-0 left-0 w-full h-1" style={{ backgroundColor: item.color }}></div>}
+            </div>
+          ))}
+        </div>
+
+        <div className="glass-card p-6 rounded-[40px] mb-8 border-white/5 bg-white/[0.02] backdrop-blur-3xl shadow-xl">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-[12px] font-black text-white uppercase tracking-[0.2em] italic">Qualification Roadmap</h3>
+            <div className="px-4 py-1.5 rounded-full bg-[#00ff88]/10 border border-[#00ff88]/30">
+              <p className="text-[9px] font-black text-[#00ff88] uppercase tracking-tighter">Pool Goal: {nextPoolName}</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {(() => {
+              const reqTier   = nextPoolId === 3 ? GOLD_TIER   : nextPoolId === 2 ? SILVER_TIER   : BRONZE_TIER;
+              const reqDirect = nextPoolId === 3 ? GOLD_DIRECT : nextPoolId === 2 ? SILVER_DIRECT : BRONZE_DIRECT;
+              const reqTeam   = nextPoolId === 3 ? GOLD_TEAM   : nextPoolId === 2 ? SILVER_TEAM   : BRONZE_TEAM;
+              
+              const missTier = missingRequirements ? missingRequirements[0] : Math.max(0, reqTier - userTier);
+              const missDirect = missingRequirements ? missingRequirements[1] : Math.max(0, reqDirect - userDirects);
+              const missTeam = missingRequirements ? missingRequirements[2] : Math.max(0, reqTeam - userTeam);
+
+              return (
+                <>
+                  <RequirementRow label="NFE Tier Ranking" current={userTier} required={reqTier} missing={missTier} isMet={userTier >= reqTier} />
+                  <RequirementRow label="Direct Node Partners" current={userDirects} required={reqDirect} missing={missDirect} isMet={userDirects >= reqDirect} />
+                  <RequirementRow label="Global Network Strength" current={userTeam} required={reqTeam} missing={missTeam} isMet={userTeam >= reqTeam} />
+                </>
+              );
+            })()}
+          </div>
+
+          <div className="mt-8">
+            {currentPoolId === 0 ? (
+              <button
+                onClick={handlePoolRegister}
+                disabled={isProcessing || !bronzeQualified}
+                className={`w-full py-5 rounded-[24px] font-black text-sm tracking-widest flex items-center justify-center space-x-3 transition-all ${bronzeQualified ? 'bg-[#00ff88] text-black shadow-[0_10px_30px_rgba(0,255,136,0.2)] active:scale-95' : 'bg-white/5 text-white/20 border border-white/5 grayscale'}`}
+              >
+                {isProcessing ? <Loader2 className="animate-spin" /> : <span>{bronzeQualified ? 'INITIALIZE BRONZE ENTRY' : 'INSUFFICIENT WEIGHT'}</span>}
+              </button>
+            ) : nextPoolId > 0 ? (
+              <button
+                onClick={handlePoolRegister}
+                disabled={isProcessing || !isQualifiedForNext}
+                className={`w-full py-5 rounded-[24px] font-black text-sm tracking-widest flex items-center justify-center space-x-3 transition-all shadow-2xl ${isQualifiedForNext ? 'text-black active:scale-95' : 'bg-white/5 text-white/20 border border-white/5 grayscale'}`}
+                style={{ backgroundColor: isQualifiedForNext ? nextPoolColor : undefined }}
+              >
+                {isProcessing ? <Loader2 className="animate-spin text-black" /> : <span>{isQualifiedForNext ? `ASCEND TO ${nextPoolName} RANK` : 'ASCENSION LOCKED'}</span>}
+              </button>
+            ) : (
+              <div className="p-6 rounded-[24px] bg-gradient-to-r from-[#FFD700]/20 to-transparent border border-[#FFD700]/40 flex items-center justify-center space-x-4">
+                <Zap size={24} className="text-[#FFD700]" strokeWidth={3} />
+                <p className="text-sm font-black text-[#FFD700] uppercase tracking-widest">MAXIMUM RANK ACHIEVED</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {globalPoolStats && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center px-2">
+              <h3 className="text-[10px] font-black opacity-40 uppercase tracking-[0.2em]">Collective Distribution</h3>
+              <div className="w-1.5 h-1.5 bg-[#00ff88] rounded-full"></div>
+            </div>
+            
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: 'BRONZE', count: globalPoolStats.bronzeNodes, color: '#CD7F32' },
+                { label: 'SILVER', count: globalPoolStats.silverNodes, color: '#C0C0C0' },
+                { label: 'GOLD', count: globalPoolStats.goldNodes, color: '#FFD700' },
+              ].map(p => (
+                <div key={p.label} className="glass-card p-4 rounded-[28px] border-white/5 bg-black/40 text-center shadow-inner">
+                  <p className="text-[8px] font-black opacity-40 mb-1" style={{ color: p.color }}>{p.label}</p>
+                  <p className="text-xl font-black text-white">{p.count}</p>
+                  <div className="w-4 h-0.5 mx-auto mt-1 rounded-full opacity-30" style={{ backgroundColor: p.color }}></div>
+                </div>
+              ))}
+            </div>
+
+            <div className="glass-card p-6 rounded-[32px] border-white/5 bg-gradient-to-r from-black/40 to-transparent flex justify-between items-center shadow-lg">
+              <div>
+                <p className="text-[9px] font-black opacity-30 uppercase tracking-widest mb-1">Global Rewards Inflow</p>
+                <p className="text-xl font-black text-[#00ff88]">{formatBNB(globalPoolStats.totalReceived)} <span className="text-[10px] opacity-40">BNB</span></p>
+              </div>
+              <div className="text-right">
+                <p className="text-[9px] font-black opacity-30 uppercase tracking-widest mb-1">Network Outflow</p>
+                <p className="text-xl font-black text-white">{formatBNB(globalPoolStats.totalDistributed)} <span className="text-[10px] opacity-40">BNB</span></p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const handleWalletConnect = async () => {
     const modal = getAppKitModal();
     await modal.open();
@@ -1039,264 +1290,15 @@ const App = () => {
                 </div>
             )}
         </div>
-      const renderPool = () => {
-    if (!rewardPoolData) {
-      return (
-        <div className="p-4 pb-24 h-full flex flex-col items-center justify-center text-center">
-          <div className="w-24 h-24 bg-[#00ff88]/5 rounded-full flex items-center justify-center mb-8 border border-[#00ff88]/10 animate-pulse">
-            <Flame className="w-12 h-12 text-[#00ff88] opacity-20" />
-          </div>
-          <h3 className="text-2xl font-black text-white uppercase mb-3 tracking-tighter">Initializing Pool</h3>
-          <p className="text-[10px] opacity-40 uppercase tracking-[0.2em] max-w-[220px] font-bold leading-relaxed">Securely synchronizing your node weight with the global reward protocol...</p>
-        </div>
-      );
-    }
 
-    const { 
-      currentPoolId, 
-      poolName, 
-      claimable, 
-      totalEarned, 
-      remainingCap, 
-      lifetimeCap, 
-      isQualifiedForNext, 
-      nextPoolId, 
-      nfeTier,
-      missingRequirements // [missingTier, missingDirects, missingTeam]
-    } = rewardPoolData;
 
-    const BRONZE_TIER = 6, SILVER_TIER = 10, GOLD_TIER = 14;
-    const BRONZE_DIRECT = 2, SILVER_DIRECT = 5, GOLD_DIRECT = 10;
-    const BRONZE_TEAM = 62, SILVER_TEAM = 2046, GOLD_TEAM = 32766;
 
-    const userTier    = Number(nfeTier) || nodeTier || 0;
-    const userDirects = onchainStats?.directNodes || 0;
-    const userTeam    = onchainStats?.totalMatrixNodes || 0;
 
-    const bronzeQualified = userTier >= BRONZE_TIER && userDirects >= BRONZE_DIRECT && userTeam >= BRONZE_TEAM;
-    const silverQualified = userTier >= SILVER_TIER && userDirects >= SILVER_DIRECT && userTeam >= SILVER_TEAM;
-    const goldQualified   = userTier >= GOLD_TIER   && userDirects >= GOLD_DIRECT   && userTeam >= GOLD_TEAM;
 
-    const getPoolColor = (id) => {
-      if (id === 3 || poolName === 'Gold') return '#FFD700';
-      if (id === 2 || poolName === 'Silver') return '#C0C0C0';
-      return '#CD7F32';
-    };
-    
-    const poolColor = currentPoolId > 0 ? getPoolColor(currentPoolId) : '#00ff88';
-    
-    const nextPoolName = nextPoolId === 3 ? 'GOLD' : nextPoolId === 2 ? 'SILVER' : 'BRONZE';
-    const nextPoolColor = getPoolColor(nextPoolId);
 
-    const capPct = (lifetimeCap && Number(lifetimeCap) > 0)
-      ? Math.min(100, Math.max(2, Math.round(((Number(lifetimeCap) - Number(remainingCap)) / Number(lifetimeCap)) * 100)))
-      : 0;
 
-    const RequirementRow = ({ label, current, required, missing, isMet }) => (
-      <div className="flex justify-between items-center py-2 border-b border-white/5 last:border-0">
-        <div>
-          <p className="text-[10px] font-black opacity-40 uppercase tracking-widest">{label}</p>
-          <p className={`text-sm font-black ${isMet ? 'text-[#00ff88]' : 'text-white'}`}>
-            {current} <span className="opacity-30 mx-1">/</span> {required}
-          </p>
-        </div>
-        <div className="text-right">
-          {isMet ? (
-            <div className="w-6 h-6 bg-[#00ff88]/20 rounded-full flex items-center justify-center">
-              <Check size={14} className="text-[#00ff88]" />
-            </div>
-          ) : (
-            <div className="px-3 py-1 bg-white/5 rounded-lg border border-white/10">
-              <span className="text-[9px] font-black text-white/60 uppercase">-{missing} needed</span>
-            </div>
-          )}
-        </div>
-      </div>
-    );
 
-    return (
-      <div className="p-4 pb-32 h-full overflow-y-auto no-scrollbar relative">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-[#00ff88]/5 rounded-full blur-[100px] -z-10 pointer-events-none"></div>
 
-        {/* Header Section */}
-        <div className="flex justify-between items-start mb-8 px-2">
-          <div>
-            <h2 className="text-4xl font-black text-white tracking-tighter leading-none mb-2">REWARDS</h2>
-            <div className="flex items-center space-x-2">
-              <div className="w-2 h-2 bg-[#00ff88] rounded-full animate-pulse"></div>
-              <p className="text-[10px] text-[#00ff88] font-black uppercase tracking-[0.2em] italic">Active Protocol v2.5</p>
-            </div>
-          </div>
-          <div className="text-right">
-            <div className={`px-4 py-1.5 rounded-2xl border-2 backdrop-blur-xl mb-1 shadow-lg shadow-black/20`} 
-                 style={{ borderColor: `${poolColor}40`, backgroundColor: `${poolColor}10` }}>
-              <span className="text-[11px] font-black uppercase tracking-widest drop-shadow-sm" style={{ color: poolColor }}>
-                {currentPoolId > 0 ? poolName.toUpperCase() : 'NO RANK'}
-              </span>
-            </div>
-            <p className="text-[9px] font-black opacity-30 uppercase tracking-[0.1em]">NODE ID #{nodeId}</p>
-          </div>
-        </div>
-
-        {/* Main Reward Card */}
-        {currentPoolId > 0 && (
-          <div className="glass-card p-8 rounded-[48px] mb-8 border-white/10 bg-gradient-to-br from-white/[0.08] to-transparent shadow-[0_20px_40px_rgba(0,0,0,0.4)] relative overflow-hidden group">
-            <div className="absolute -top-24 -right-24 w-64 h-64 rounded-full blur-[80px] opacity-20 transition-all duration-1000 group-hover:scale-125" style={{ backgroundColor: poolColor }} />
-            
-            <div className="flex justify-between items-end mb-8 relative z-10">
-              <div>
-                <p className="text-[11px] font-black opacity-40 uppercase tracking-[0.2em] mb-2">Available for Claim</p>
-                <div className="flex items-baseline space-x-3">
-                  <h4 className="text-5xl font-black text-white tracking-tighter leading-none">{formatBNB(claimable)}</h4>
-                  <span className="text-xl font-black text-[#00ff88]">BNB</span>
-                </div>
-              </div>
-              <button
-                onClick={handlePoolClaim}
-                disabled={isProcessing || Number(claimable) === 0}
-                className="w-16 h-16 rounded-3xl flex items-center justify-center shadow-2xl active:scale-90 disabled:opacity-30 disabled:grayscale transition-all"
-                style={{ backgroundColor: Number(claimable) > 0 ? poolColor : '#ffffff20' }}
-              >
-                {isProcessing ? <Loader2 size={24} className="animate-spin text-black" /> : <ArrowUpRight size={28} className={Number(claimable) > 0 ? 'text-black' : 'text-white/20'} />}
-              </button>
-            </div>
-
-            <div className="space-y-3 relative z-10">
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-[10px] font-black opacity-40 uppercase tracking-widest">Yield Evolution</span>
-                <span className="text-[10px] font-black text-white bg-white/10 px-3 py-1 rounded-full">{capPct}% CAP REACHED</span>
-              </div>
-              <div className="w-full h-3 bg-black/40 rounded-full overflow-hidden p-0.5 border border-white/5 shadow-inner">
-                <div
-                  className="h-full rounded-full transition-all duration-1000 relative"
-                  style={{ width: `${capPct}%`, background: `linear-gradient(90deg, ${poolColor}, #ffffff88)` }}
-                >
-                  <div className="absolute top-0 right-0 w-2 h-full bg-white opacity-40 animate-pulse"></div>
-                </div>
-              </div>
-              <div className="flex justify-between items-center px-1">
-                <span className="text-[9px] opacity-30 font-black uppercase">Earnings: {formatBNB(totalEarned)}</span>
-                <span className="text-[9px] opacity-30 font-black uppercase">Limit: {formatBNB(lifetimeCap)}</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Current Eligibility Status */}
-        <div className="grid grid-cols-3 gap-3 mb-8">
-          {[
-            { id: 1, name: 'BRONZE', color: '#CD7F32', isQualified: bronzeQualified, isActive: currentPoolId === 1 },
-            { id: 2, name: 'SILVER', color: '#C0C0C0', isQualified: silverQualified, isActive: currentPoolId === 2 },
-            { id: 3, name: 'GOLD', color: '#FFD700', isQualified: goldQualified, isActive: currentPoolId === 3 },
-          ].map((item) => (
-            <div key={item.name} 
-                 className={`glass-card p-4 rounded-[32px] border transition-all duration-500 relative overflow-hidden flex flex-col items-center justify-center ${item.isActive ? 'scale-105 shadow-2xl border-white/40' : 'opacity-40 grayscale border-white/5'}`}
-                 style={{ backgroundColor: item.isActive ? `${item.color}20` : undefined, borderColor: item.isActive ? item.color : undefined }}>
-              <div className="mb-2 p-2 rounded-xl bg-white/5">
-                <Flame size={18} style={{ color: item.isQualified ? item.color : '#ffffff20' }} fill={item.isQualified ? item.color : 'transparent'} />
-              </div>
-              <p className="text-[8px] font-black tracking-widest mb-1" style={{ color: item.color }}>{item.isQualified ? item.name : 'LOCKED'}</p>
-              {item.isActive && <div className="absolute bottom-0 left-0 w-full h-1" style={{ backgroundColor: item.color }}></div>}
-            </div>
-          ))}
-        </div>
-
-        {/* Requirements Card */}
-        <div className="glass-card p-6 rounded-[40px] mb-8 border-white/5 bg-white/[0.02] backdrop-blur-3xl shadow-xl">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-[12px] font-black text-white uppercase tracking-[0.2em] italic">Qualification Roadmap</h3>
-            <div className="px-4 py-1.5 rounded-full bg-[#00ff88]/10 border border-[#00ff88]/30">
-              <p className="text-[9px] font-black text-[#00ff88] uppercase tracking-tighter">Pool Goal: {nextPoolName}</p>
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            {(() => {
-              const reqTier   = nextPoolId === 3 ? GOLD_TIER   : nextPoolId === 2 ? SILVER_TIER   : BRONZE_TIER;
-              const reqDirect = nextPoolId === 3 ? GOLD_DIRECT : nextPoolId === 2 ? SILVER_DIRECT : BRONZE_DIRECT;
-              const reqTeam   = nextPoolId === 3 ? GOLD_TEAM   : nextPoolId === 2 ? SILVER_TEAM   : BRONZE_TEAM;
-              
-              // Map missingRequirements to human-readable deltas
-              const missTier = missingRequirements ? missingRequirements[0] : Math.max(0, reqTier - userTier);
-              const missDirect = missingRequirements ? missingRequirements[1] : Math.max(0, reqDirect - userDirects);
-              const missTeam = missingRequirements ? missingRequirements[2] : Math.max(0, reqTeam - userTeam);
-
-              return (
-                <>
-                  <RequirementRow label="NFE Tier Ranking" current={userTier} required={reqTier} missing={missTier} isMet={userTier >= reqTier} />
-                  <RequirementRow label="Direct Node Partners" current={userDirects} required={reqDirect} missing={missDirect} isMet={userDirects >= reqDirect} />
-                  <RequirementRow label="Global Network Strength" current={userTeam} required={reqTeam} missing={missTeam} isMet={userTeam >= reqTeam} />
-                </>
-              );
-            })()}
-          </div>
-
-          <div className="mt-8">
-            {currentPoolId === 0 ? (
-              <button
-                onClick={handlePoolRegister}
-                disabled={isProcessing || !bronzeQualified}
-                className={`w-full py-5 rounded-[24px] font-black text-sm tracking-widest flex items-center justify-center space-x-3 transition-all ${bronzeQualified ? 'bg-[#00ff88] text-black shadow-[0_10px_30px_rgba(0,255,136,0.2)] active:scale-95' : 'bg-white/5 text-white/20 border border-white/5 grayscale'}`}
-              >
-                {isProcessing ? <Loader2 className="animate-spin" /> : <span>{bronzeQualified ? 'INITIALIZE BRONZE ENTRY' : 'INSUFFICIENT WEIGHT'}</span>}
-              </button>
-            ) : nextPoolId > 0 ? (
-              <button
-                onClick={handlePoolRegister}
-                disabled={isProcessing || !isQualifiedForNext}
-                className={`w-full py-5 rounded-[24px] font-black text-sm tracking-widest flex items-center justify-center space-x-3 transition-all shadow-2xl ${isQualifiedForNext ? 'text-black active:scale-95' : 'bg-white/5 text-white/20 border border-white/5 grayscale'}`}
-                style={{ backgroundColor: isQualifiedForNext ? nextPoolColor : undefined }}
-              >
-                {isProcessing ? <Loader2 className="animate-spin text-black" /> : <span>{isQualifiedForNext ? `ASCEND TO ${nextPoolName} RANK` : 'ASCENSION LOCKED'}</span>}
-              </button>
-            ) : (
-              <div className="p-6 rounded-[24px] bg-gradient-to-r from-[#FFD700]/20 to-transparent border border-[#FFD700]/40 flex items-center justify-center space-x-4">
-                <Zap size={24} className="text-[#FFD700]" strokeWidth={3} />
-                <p className="text-sm font-black text-[#FFD700] uppercase tracking-widest">MAXIMUM RANK ACHIEVED</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Network Stats Footer */}
-        {globalPoolStats && (
-          <div className="space-y-4">
-            <div className="flex justify-between items-center px-2">
-              <h3 className="text-[10px] font-black opacity-40 uppercase tracking-[0.2em]">Collective Distribution</h3>
-              <div className="w-1.5 h-1.5 bg-[#00ff88] rounded-full"></div>
-            </div>
-            
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                { label: 'BRONZE', count: globalPoolStats.bronzeNodes, color: '#CD7F32' },
-                { label: 'SILVER', count: globalPoolStats.silverNodes, color: '#C0C0C0' },
-                { label: 'GOLD', count: globalPoolStats.goldNodes, color: '#FFD700' },
-              ].map(p => (
-                <div key={p.label} className="glass-card p-4 rounded-[28px] border-white/5 bg-black/40 text-center shadow-inner">
-                  <p className="text-[8px] font-black opacity-40 mb-1" style={{ color: p.color }}>{p.label}</p>
-                  <p className="text-xl font-black text-white">{p.count}</p>
-                  <div className="w-4 h-0.5 mx-auto mt-1 rounded-full opacity-30" style={{ backgroundColor: p.color }}></div>
-                </div>
-              ))}
-            </div>
-
-            <div className="glass-card p-6 rounded-[32px] border-white/5 bg-gradient-to-r from-black/40 to-transparent flex justify-between items-center shadow-lg">
-              <div>
-                <p className="text-[9px] font-black opacity-30 uppercase tracking-widest mb-1">Global Rewards Inflow</p>
-                <p className="text-xl font-black text-[#00ff88]">{formatBNB(globalPoolStats.totalReceived)} <span className="text-[10px] opacity-40">BNB</span></p>
-              </div>
-              <div className="text-right">
-                <p className="text-[9px] font-black opacity-30 uppercase tracking-widest mb-1">Network Outflow</p>
-                <p className="text-xl font-black text-white">{formatBNB(globalPoolStats.totalDistributed)} <span className="text-[10px] opacity-40">BNB</span></p>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };    </div>
-            </div>
-          </div>
         )}
       </div>
     );

@@ -54,7 +54,8 @@ import {
   getPoolViewData,
   getGlobalPoolStats,
   claimPoolRewards,
-  registerPoolNode
+  registerPoolNode,
+  invalidateProviderCache
 } from './utils/web3';
 import { getOffchainReferralStats } from './services/referralService';
 
@@ -310,6 +311,7 @@ const App = () => {
 
     const modal = getAppKitModal();
     const unsubscribe = modal.subscribeAccount(state => {
+      invalidateProviderCache();
       if (state.isConnected && state.address) {
         setUserAddress(state.address);
         syncBlockchainData(state.address);

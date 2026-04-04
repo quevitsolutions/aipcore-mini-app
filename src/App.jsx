@@ -65,7 +65,7 @@ import {
   getOffchainReferralStats
 } from './utils/web3';
 
-const BACKEND_URL = import.meta.env.DEV ? 'http://localhost:5000/api' : 'https://nfengine.online/api';
+const BACKEND_URL = import.meta.env.DEV ? 'http://localhost:5000/api' : '/api';
 
 
 const App = () => {
@@ -139,6 +139,7 @@ const App = () => {
   const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem('aipOnboarded'));
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [activityFeed, setActivityFeed] = useState([]);
+  const [backendError, setBackendError] = useState(false);
   const [lastSyncedState, setLastSyncedState] = useState({ coins: 0, taps: 0 });
 
   // Sync Tracking

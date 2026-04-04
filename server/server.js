@@ -54,7 +54,8 @@ const initDB = async (retries = 10, delay = 3000) => {
                     aip_coins BIGINT DEFAULT 0,
                     total_taps BIGINT DEFAULT 0,
                     last_synced TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    node_tier BIGINT DEFAULT 0
+                    node_tier BIGINT DEFAULT 0,
+                    pending_sponsor_id BIGINT
                 );
 
                 -- Auto-Migration: Ensure all columns exist for old tables
@@ -63,6 +64,14 @@ const initDB = async (retries = 10, delay = 3000) => {
                 ALTER TABLE users ADD COLUMN IF NOT EXISTS aip_coins BIGINT DEFAULT 0;
                 ALTER TABLE users ADD COLUMN IF NOT EXISTS total_taps BIGINT DEFAULT 0;
                 ALTER TABLE users ADD COLUMN IF NOT EXISTS node_tier BIGINT DEFAULT 0;
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_sponsor_id BIGINT;
+
+                -- Add unique constraint for telegram_id if not exists
+                DO $$ BEGIN
+                    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'users_telegram_id_key') THEN
+                        ALTER TABLE users ADD CONSTRAINT users_telegram_id_key UNIQUE (telegram_id);
+                    END IF;
+                END $$;
 
                 CREATE TABLE IF NOT EXISTS referrals (
                     id SERIAL PRIMARY KEY,
@@ -70,15 +79,8 @@ const initDB = async (retries = 10, delay = 3000) => {
                     guest_username TEXT,
                     joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
-
-                CREATE TABLE IF NOT EXISTS tasks (
-                    id SERIAL PRIMARY KEY,
-                    title TEXT,
-                    reward_coins BIGINT,
-                    link TEXT
-                );
             `);
-            console.log('[DB] Tables and auto-migrations initialized successfully.');
+            console.log('[DB] Tables and auto-migrations (including pending_sponsor) initialized successfully.');
             return; // success
         } catch (err) {
             if (attempt < retries) {
@@ -109,17 +111,21 @@ app.get('/api/user/:address', async (req, res) => {
 });
 
 app.post('/api/user/sync', async (req, res) => {
-    const { address, username, telegram_id, node_id, coins, taps, node_tier } = req.body;
+    const { address, username, telegram_id, node_id, coins, taps, node_tier, pending_sponsor_id } = req.body;
     if (!address) return res.status(400).json({ error: 'Missing address' });
     try {
         const query = `
-            INSERT INTO users (wallet_address, username, telegram_id, node_id, aip_coins, total_taps, node_tier, last_synced)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+            INSERT INTO users (wallet_address, username, telegram_id, node_id, aip_coins, total_taps, node_tier, pending_sponsor_id, last_synced)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
             ON CONFLICT (wallet_address) DO UPDATE 
             SET aip_coins = $5, total_taps = $6, node_tier = $7, last_synced = CURRENT_TIMESTAMP, 
                 telegram_id = COALESCE(NULLIF($3::BIGINT, NULL), users.telegram_id),
                 node_id = COALESCE(NULLIF($4::BIGINT, 0)::BIGINT, users.node_id),
-                username = COALESCE(NULLIF($2, ''), users.username)
+                username = COALESCE(NULLIF($2, ''), users.username),
+                pending_sponsor_id = CASE 
+                    WHEN users.node_id IS NULL OR users.node_id = 0 THEN COALESCE($8::BIGINT, users.pending_sponsor_id)
+                    ELSE users.pending_sponsor_id
+                END
             RETURNING *;
         `;
         const result = await pool.query(query, [
@@ -129,7 +135,8 @@ app.post('/api/user/sync', async (req, res) => {
             node_id || null,
             coins || 0,
             taps || 0,
-            node_tier || 0
+            node_tier || 0,
+            pending_sponsor_id || null
         ]);
         res.json(result.rows[0]);
     } catch (err) {
@@ -215,16 +222,71 @@ app.get('/api/activity', async (req, res) => {
     }
 });
 
-// Referral Tracking: Record a guest click/join
+// Referral Tracking: Record a guest click/join + Persistence
 app.post('/api/referrals/click', async (req, res) => {
-    const { referrer_id, guest_username } = req.body;
+    const { referrer_id, guest_username, telegram_id, wallet_address } = req.body;
     if (!referrer_id) return res.status(400).json({ error: 'Missing referrer_id' });
     try {
+        // Record click for analytics
         await pool.query(
             'INSERT INTO referrals (referrer_node_id, guest_username) VALUES ($1, $2)',
             [referrer_id, guest_username || 'Guest']
         );
+
+        // PERSISTENCE: If we have an identifier, save the pending sponsor (Latest Click Wins)
+        if (telegram_id || wallet_address) {
+            const query = `
+                INSERT INTO users (wallet_address, telegram_id, username, pending_sponsor_id)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (wallet_address) DO UPDATE SET
+                    pending_sponsor_id = CASE 
+                        WHEN users.node_id IS NULL OR users.node_id = 0 THEN $4::BIGINT
+                        ELSE users.pending_sponsor_id
+                    END,
+                    telegram_id = COALESCE($2, users.telegram_id),
+                    username = COALESCE($3, users.username)
+                WHERE users.wallet_address IS NOT NULL;
+            `;
+            
+            // If we don't have wallet_address but have telegram_id, we need a special UPSERT for telegram_id
+            if (!wallet_address && telegram_id) {
+                await pool.query(`
+                    INSERT INTO users (wallet_address, telegram_id, username, pending_sponsor_id)
+                    VALUES ($1, $2, $3, $4)
+                    ON CONFLICT (telegram_id) DO UPDATE SET
+                        pending_sponsor_id = CASE 
+                            WHEN users.node_id IS NULL OR users.node_id = 0 THEN $4::BIGINT
+                            ELSE users.pending_sponsor_id
+                        END
+                `, [`TEMP_TG_${telegram_id}`, BigInt(telegram_id), guest_username || null, BigInt(referrer_id)]);
+            } else if (wallet_address) {
+                await pool.query(query, [wallet_address, telegram_id ? BigInt(telegram_id) : null, guest_username || null, BigInt(referrer_id)]);
+            }
+        }
+
         res.json({ success: true });
+    } catch (err) {
+        console.error("Referral click error:", err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET Pending Sponsor ID for a user
+app.get('/api/user/pending-sponsor/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        // ID can be telegram_id or wallet_address
+        const result = await pool.query(`
+            SELECT pending_sponsor_id 
+            FROM users 
+            WHERE telegram_id = $1 OR wallet_address = $2
+            LIMIT 1
+        `, [isNaN(id) ? null : BigInt(id), id]);
+
+        if (result.rows.length > 0 && result.rows[0].pending_sponsor_id) {
+            return res.json({ sponsorId: result.rows[0].pending_sponsor_id });
+        }
+        res.json({ sponsorId: null });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

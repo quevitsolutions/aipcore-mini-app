@@ -439,22 +439,6 @@ const App = () => {
         localStorage.setItem('pendingSponsor', startParam);
         console.log("Captured Referral Sponsor (Telegram):", startParam);
         
-        // Record the Guest Click/Join on Backend
-        fetch(`${BACKEND_URL}/referrals/click`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            referrer_id: startParam,
-            guest_username: tgUser?.username || tgUser?.first_name || "Guest"
-          })
-        }).catch(err => console.error("Guest record failed:", err));
-      }
-    } else {
-      // Browser Context: Capture Referral from URL search params
-      const urlParams = new URLSearchParams(window.location.search);
-      const webRef = urlParams.get('ref');
-      if (webRef) {
-        localStorage.setItem('pendingSponsor', webRef);
         console.log("Captured Referral Sponsor (Web):", webRef);
         
         fetch(`${BACKEND_URL}/referrals/click`, {
@@ -947,8 +931,26 @@ const App = () => {
   const handleCreateNode = async () => {
     setIsProcessing(true);
     try {
-      const savedSponsor = localStorage.getItem('pendingSponsor');
-      const sponsorId = savedSponsor ? Number(savedSponsor) : 36999;
+      // Prioritize backend sponsor, then local storage, then default
+      let sponsorId = 36999;
+      const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+      const identifier = tgUser?.id || userAddress;
+
+      if (identifier) {
+        try {
+          const res = await fetch(`${BACKEND_URL}/user/pending-sponsor/${identifier}`);
+          const data = await res.json();
+          if (data.sponsorId) sponsorId = Number(data.sponsorId);
+        } catch (err) {
+          const savedSponsor = localStorage.getItem('pendingSponsor');
+          if (savedSponsor) sponsorId = Number(savedSponsor);
+        }
+      } else {
+        const savedSponsor = localStorage.getItem('pendingSponsor');
+        if (savedSponsor) sponsorId = Number(savedSponsor);
+      }
+
+      console.log("Creating node with Sponsor ID:", sponsorId);
       await createNodeTransaction(sponsorId);
       await syncBlockchainData(userAddress);
       if (window.Telegram?.WebApp) window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');

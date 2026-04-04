@@ -234,34 +234,28 @@ const App = () => {
   const syncUserToBackend = useCallback(async (coins, taps, nId, tier, tgUser) => {
     // Only sync if there's an actual change since last success
     if (coins === lastSyncedState.coins && taps === lastSyncedState.taps && !tgUser) return;
-    
-    // Resolve telegram info from parameter OR state
-    const resolvedTg = tgUser || telegramUser;
-    const tgId   = resolvedTg?.id       || null;
-    const tgName = resolvedTg?.username || resolvedTg?.first_name || null;
-
+  const syncUserToBackend = async (coins, taps, nodeId, nodeTier, tgUser, directCount = 0) => {
+    if (!userAddress) return;
     try {
-      const res = await fetch(`${BACKEND_URL}/user/sync`, {
+      await fetch(`${BACKEND_URL}/user/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          address:     userAddress,
-          node_id:     nId,
-          coins:       coins,
-          taps:        taps,
-          node_tier:   tier || 0,
-          telegram_id: tgId,
-          username:    tgName
-        })
+          address: userAddress,
+          username: tgUser?.username || tgUser?.first_name || '',
+          telegram_id: tgUser?.id,
+          node_id: nodeId,
+          coins,
+          taps,
+          node_tier: nodeTier,
+          direct_count: directCount,
+          pending_sponsor_id: localStorage.getItem('pendingSponsor')
+        }),
       });
-      if (res.ok) {
-          setLastSyncedState({ coins, taps });
-          console.debug("Backend Sync Successful", { tgId, tgName, tier });
-      }
     } catch (err) {
-      console.error("Sync failed:", err);
+      console.warn("Sync to backend failed:", err);
     }
-  }, [userAddress, lastSyncedState, telegramUser]);
+  };
 
   // 2. Fetch Blockchain Data (Nodes, Tiers, Rewards)
   const handleWithdraw = async () => {
@@ -317,8 +311,8 @@ const App = () => {
             setOnchainStats(data);
           }
 
-          // Sync current state to backend (Tier + Telegram identity included)
-          syncUserToBackend(aipCoins, totalTaps, id, data?.tier || 0, telegramUser);
+          // Sync current state to backend (Tier + Telegram identity + Directs included)
+          syncUserToBackend(aipCoins, totalTaps, id, data?.tier || 0, telegramUser, data?.directNodes || 0);
 
           if (rewards) setRewardStats(rewards);
           if (matrix) setMatrixData(matrix);
@@ -345,25 +339,25 @@ const App = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [userAddress, aipCoins, totalTaps, syncUserToBackend]);
+  }, [userAddress, aipCoins, totalTaps, telegramUser]);
 
   // 2. Optimized Periodic Sync (Every 60 Seconds)
   useEffect(() => {
     if (!userAddress || nodeId <= 0) return;
 
     const syncInterval = setInterval(() => {
-      syncUserToBackend(aipCoins, totalTaps, nodeId, nodeTier);
+      syncUserToBackend(aipCoins, totalTaps, nodeId, nodeTier, telegramUser, onchainStats?.directNodes || 0);
     }, 60000); // 1 Minute
 
     return () => clearInterval(syncInterval);
-  }, [userAddress, nodeId, aipCoins, totalTaps, nodeTier, syncUserToBackend]);
+  }, [userAddress, nodeId, aipCoins, totalTaps, nodeTier, telegramUser, onchainStats]);
 
   // 3. Auto-sync on Tab Change
   useEffect(() => {
     if (userAddress && nodeId > 0) {
-      syncUserToBackend(aipCoins, totalTaps, nodeId, nodeTier);
+      syncUserToBackend(aipCoins, totalTaps, nodeId, nodeTier, telegramUser, onchainStats?.directNodes || 0);
     }
-  }, [currentView, userAddress, nodeId, syncUserToBackend]); // Trigger on view change
+  }, [currentView, userAddress, nodeId, telegramUser, onchainStats]); // Trigger on view change
 
   const fetchLeaderboard = async (force = false) => {
     // Only fetch once every 2 minutes unless forced
@@ -536,7 +530,7 @@ const App = () => {
       setAipCoins(currentCoins => {
         setTotalTaps(currentTaps => {
           if (currentCoins !== lastSyncedRef.current.coins || currentTaps !== lastSyncedRef.current.taps) {
-            syncUserToBackend(currentCoins, currentTaps, nodeId);
+            syncUserToBackend(currentCoins, currentTaps, nodeId, nodeTier, telegramUser, onchainStats?.directNodes || 0);
             lastSyncedRef.current = { coins: currentCoins, taps: currentTaps };
           }
           return currentTaps;
@@ -546,7 +540,7 @@ const App = () => {
     }, 30000);
 
     return () => clearInterval(heartbeat);
-  }, [userAddress, syncUserToBackend]);
+  }, [userAddress, nodeId, nodeTier, telegramUser, onchainStats]);
 
   // Handle Account & Chain Changes via AppKit
   useEffect(() => {
@@ -1673,11 +1667,17 @@ const App = () => {
                   >
                       TIERS
                   </button>
+                  <button 
+                      onClick={() => setLeaderboardTab('directs')}
+                      className={`px-4 py-2 rounded-lg text-[10px] font-black transition-all ${leaderboardTab === 'directs' ? 'bg-[#00ff88] text-black shadow-lg shadow-[#00ff88]/30' : 'text-white opacity-40'}`}
+                  >
+                      DIRECTS
+                  </button>
               </div>
           </div>
 
         <div className="space-y-3">
-            {(leaderboardTab === 'coins' ? leaderboardData.coins : leaderboardData.tiers).map((entry, index) => {
+            {(leaderboardTab === 'coins' ? leaderboardData.coins : (leaderboardTab === 'tiers' ? leaderboardData.tiers : (leaderboardData.directs || []))).map((entry, index) => {
                 const isTop3 = index < 3;
                 const colors = ['#FFD700', '#C0C0C0', '#CD7F32']; // Gold, Silver, Bronze
                 return (
@@ -1691,12 +1691,14 @@ const App = () => {
                             </div>
                             <div>
                                 <p className="text-sm font-black text-white uppercase">{entry.username || `User #${entry.node_id}`}</p>
-                                <p className="text-[10px] font-black text-[#00ff88] uppercase tracking-widest opacity-60">ID {entry.node_id} • TIER {entry.tier || entry.score || 0}</p>
+                                <p className="text-[10px] font-black text-[#00ff88] uppercase tracking-widest opacity-60">ID {entry.node_id} • {entry.tier ? getTierDetails(entry.tier).name : 'GUEST'}</p>
                             </div>
                         </div>
                         <div className="text-right">
                             <p className="text-sm font-black text-white">{entry.score.toLocaleString()}</p>
-                            <p className="text-[9px] font-black opacity-30 uppercase tracking-tighter">{leaderboardTab === 'coins' ? 'AIP COINS' : 'NODE TIER'}</p>
+                            <p className="text-[9px] font-black opacity-30 uppercase tracking-tighter">
+                                {leaderboardTab === 'coins' ? 'AIP COINS' : (leaderboardTab === 'tiers' ? 'NODE TIER' : 'DIRECTS')}
+                            </p>
                         </div>
                     </div>
                 );

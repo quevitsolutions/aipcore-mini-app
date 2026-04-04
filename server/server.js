@@ -55,7 +55,8 @@ const initDB = async (retries = 10, delay = 3000) => {
                     total_taps BIGINT DEFAULT 0,
                     last_synced TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     node_tier BIGINT DEFAULT 0,
-                    pending_sponsor_id BIGINT
+                    pending_sponsor_id BIGINT,
+                    direct_count BIGINT DEFAULT 0
                 );
 
                 -- Auto-Migration: Ensure all columns exist for old tables
@@ -65,6 +66,9 @@ const initDB = async (retries = 10, delay = 3000) => {
                 ALTER TABLE users ADD COLUMN IF NOT EXISTS total_taps BIGINT DEFAULT 0;
                 ALTER TABLE users ADD COLUMN IF NOT EXISTS node_tier BIGINT DEFAULT 0;
                 ALTER TABLE users ADD COLUMN IF NOT EXISTS pending_sponsor_id BIGINT;
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS direct_count BIGINT DEFAULT 0;
+
+                -- Add unique constraint for telegram_id if not exists
 
                 -- Add unique constraint for telegram_id if not exists
                 DO $$ BEGIN
@@ -111,17 +115,18 @@ app.get('/api/user/:address', async (req, res) => {
 });
 
 app.post('/api/user/sync', async (req, res) => {
-    const { address, username, telegram_id, node_id, coins, taps, node_tier, pending_sponsor_id } = req.body;
+    const { address, username, telegram_id, node_id, coins, taps, node_tier, pending_sponsor_id, direct_count } = req.body;
     if (!address) return res.status(400).json({ error: 'Missing address' });
     try {
         const query = `
-            INSERT INTO users (wallet_address, username, telegram_id, node_id, aip_coins, total_taps, node_tier, pending_sponsor_id, last_synced)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)
+            INSERT INTO users (wallet_address, username, telegram_id, node_id, aip_coins, total_taps, node_tier, pending_sponsor_id, direct_count, last_synced)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)
             ON CONFLICT (wallet_address) DO UPDATE 
             SET aip_coins = $5, total_taps = $6, node_tier = $7, last_synced = CURRENT_TIMESTAMP, 
                 telegram_id = COALESCE(NULLIF($3::BIGINT, NULL), users.telegram_id),
                 node_id = COALESCE(NULLIF($4::BIGINT, 0)::BIGINT, users.node_id),
                 username = COALESCE(NULLIF($2, ''), users.username),
+                direct_count = COALESCE(NULLIF($9::BIGINT, 0)::BIGINT, users.direct_count),
                 pending_sponsor_id = CASE 
                     WHEN users.node_id IS NULL OR users.node_id = 0 THEN COALESCE($8::BIGINT, users.pending_sponsor_id)
                     ELSE users.pending_sponsor_id
@@ -136,7 +141,8 @@ app.post('/api/user/sync', async (req, res) => {
             coins || 0,
             taps || 0,
             node_tier || 0,
-            pending_sponsor_id || null
+            pending_sponsor_id || null,
+            direct_count || 0
         ]);
         res.json(result.rows[0]);
     } catch (err) {
@@ -198,9 +204,17 @@ app.get('/api/leaderboard', async (req, res) => {
             ORDER BY node_tier DESC, aip_coins DESC
             LIMIT 50
         `);
+        const topDirects = await pool.query(`
+            SELECT username, node_id, direct_count as score, node_tier as tier, wallet_address as wallet
+            FROM users 
+            WHERE direct_count > 0
+            ORDER BY direct_count DESC, node_tier DESC
+            LIMIT 50
+        `);
         res.json({
             coins: topCoins.rows,
-            tiers: topTiers.rows
+            tiers: topTiers.rows,
+            directs: topDirects.rows
         });
     } catch (err) {
         res.status(500).json({ error: err.message });

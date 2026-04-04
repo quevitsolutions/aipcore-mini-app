@@ -1300,7 +1300,8 @@ const App = () => {
 
 
 
-    );
+    </div>
+  );
 
   const renderEarn = () => (
     <div className="p-4 pb-24 h-full overflow-y-auto">
@@ -1400,15 +1401,18 @@ const App = () => {
     </div>
   );
 
-  const SidebarItem = ({ id, icon: Icon, label, color }) => (
-    <button 
-      onClick={() => setCurrentView(id)} 
-      className={`sidebar-item w-full flex items-center space-x-3 px-6 py-4 rounded-2xl ${currentView === id ? 'active' : 'opacity-100 font-bold'}`}
-    >
-      <Icon size={20} className={color || 'text-white'} />
-      <span className="text-[13px] font-black uppercase tracking-widest">{label}</span>
-    </button>
-  );
+  const SidebarItem = ({ id, icon, label, color }) => {
+    const Icon = icon;
+    return (
+      <button 
+        onClick={() => setCurrentView(id)} 
+        className={`sidebar-item w-full flex items-center space-x-3 px-6 py-4 rounded-2xl ${currentView === id ? 'active' : 'opacity-100 font-bold'}`}
+      >
+        <Icon size={20} className={color || 'text-white'} />
+        <span className="text-[13px] font-black uppercase tracking-widest">{label}</span>
+      </button>
+    );
+  };
 
   return (
     <div className="h-screen w-full relative flex lg:flex-row bg-black antialiased font-['Outfit'] overflow-hidden">

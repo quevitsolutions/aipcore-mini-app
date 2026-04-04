@@ -263,6 +263,7 @@ const App = () => {
       setBnbPrice(bPrice);
       setIsAdmin(address.toLowerCase() === ownerAddr.toLowerCase());
 
+      if (id > 0) {
           const [data, rewards, matrix, offchain, history, pData, gStats, pReward, transparency, diagnostic, canUpgrade] = await Promise.all([
             getNodeData(id),
             getRewardStats(id),
@@ -304,6 +305,7 @@ const App = () => {
           setIncomeHistory([]);
           setRewardPoolData(null);
         }
+
     } catch (err) {
       console.error("Blockchain sync failed:", err);
     } finally {

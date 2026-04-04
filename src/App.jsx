@@ -1101,30 +1101,7 @@ const App = () => {
 
   const renderHome = () => (
     <div className="flex flex-col h-full overflow-hidden relative">
-      {/* 1. Live Activity Ticker */}
-      <div className="h-10 bg-white/5 backdrop-blur-md border-b border-white/5 flex items-center overflow-hidden z-30 shrink-0">
-        <div className="ticker-scroll">
-          {backendError ? (
-            <span className="text-[10px] font-black uppercase tracking-widest text-red-500/80 animate-pulse px-6 flex items-center">
-                <ShieldAlert size={14} className="mr-2" /> Backend Offline: Live Data Temporarily Unavailable
-            </span>
-          ) : activityFeed.length > 0 ? activityFeed.map((act, i) => (
-            <div key={i} className="flex items-center space-x-3 text-[10px] font-black uppercase tracking-widest text-[#00ff88]/80">
-              <span className="text-white opacity-40">●</span>
-              <span>{act.username || `User #${act.node_id}`}</span> 
-              <span className="text-white opacity-40">Reached Tier</span> 
-              <span className="text-white">{getTierDetails(act.tier).name}</span>
-              <span className="text-white opacity-40">with</span>
-              <span className="text-white">{Math.floor(act.coins / 1000)}K</span>
-              <span className="text-white opacity-40">Coins</span>
-            </div>
-          )) : (
-            <span className="text-[10px] font-black uppercase tracking-widest text-[#00ff88]/40 animate-pulse px-6">Initializing Platform Command Feed... Matrix Active.</span>
-          )}
-        </div>
-      </div>
-
-      {/* 2. Dashboard HUD (Top) */}
+      {/* 1. Dashboard HUD (Top) */}
       <div className="px-5 pt-3 z-20">
           <div className="glass-card p-3 rounded-2xl flex justify-between items-center border border-white/10 bg-white/[0.03]">
               {nodeId === 0 ? (
@@ -1189,19 +1166,13 @@ const App = () => {
           </div>
       </div>
 
-      <div className="flex flex-col items-center justify-center mt-2 z-20 shrink-0">
-          <div className="flex items-center space-x-2 px-3 py-1 bg-white/10 rounded-full border border-white/5">
-              <span className="text-[9px] font-black text-[#00ff88] uppercase tracking-widest flex items-center"><Zap size={10} className="mr-1"/> +{tapValue} Per Tap</span>
-          </div>
-      </div>
-
       {/* 3. The Hook / Tap Character (Center) */}
-      <div className="flex-grow flex flex-col items-center justify-center relative select-none z-10 min-h-0 overflow-visible">
+      <div className="flex-grow flex flex-col items-center justify-center relative select-none z-10 min-h-0 overflow-visible mt-2">
         <div 
-          className="click-card relative w-56 h-56 sm:w-64 sm:h-64 rounded-full flex items-center justify-center cursor-pointer overflow-hidden shadow-[0_0_50px_rgba(0,255,136,0.15)] bg-gradient-to-br from-[#00ff88]/5 to-transparent border-[3px] border-[#00ff88]/20 transition-all duration-300"
+          className="click-card relative w-60 h-60 sm:w-72 sm:h-72 rounded-full flex items-center justify-center cursor-pointer overflow-hidden shadow-[0_0_60px_rgba(0,255,136,0.2)] bg-gradient-to-br from-[#00ff88]/10 to-transparent border-[4px] border-[#00ff88]/30 transition-all duration-300"
           onClick={handleTap}
         >
-          <img src={mainCharacter} alt="AIP Warrior" className="w-40 h-40 sm:w-48 sm:h-48 pointer-events-none transform active:scale-90 transition-transform" />
+          <img src={mainCharacter} alt="AIP Warrior" className="w-44 h-44 sm:w-56 sm:h-56 pointer-events-none transform active:scale-90 transition-transform" />
           
           {clicks.map((click) => (
             <div
@@ -1661,25 +1632,48 @@ const App = () => {
     );
   };
 
-  const renderLeaderboard = () => (
-    <div className="p-4 pb-24 h-full overflow-y-auto">
-        <div className="flex justify-between items-center mb-6">
-            <h2 className="text-3xl font-black text-white uppercase tracking-tighter">LEADERBOARD</h2>
-            <div className="flex bg-white/10 p-1 rounded-xl">
-                <button 
-                    onClick={() => setLeaderboardTab('coins')}
-                    className={`px-4 py-2 rounded-lg text-[10px] font-black transition-all ${leaderboardTab === 'coins' ? 'bg-[#00ff88] text-black shadow-lg shadow-[#00ff88]/30' : 'text-white opacity-40'}`}
-                >
-                    COINS
-                </button>
-                <button 
-                    onClick={() => setLeaderboardTab('tiers')}
-                    className={`px-4 py-2 rounded-lg text-[10px] font-black transition-all ${leaderboardTab === 'tiers' ? 'bg-[#00ff88] text-black shadow-lg shadow-[#00ff88]/30' : 'text-white opacity-40'}`}
-                >
-                    TIERS
-                </button>
-            </div>
+    <div className="flex flex-col h-full overflow-hidden">
+        {/* Live Activity Ticker (Sticky at top of Leaderboard) */}
+        <div className="h-10 bg-white/5 backdrop-blur-md border-b border-white/5 flex items-center overflow-hidden z-30 shrink-0">
+          <div className="ticker-scroll">
+            {backendError ? (
+              <span className="text-[10px] font-black uppercase tracking-widest text-red-500/80 animate-pulse px-6 flex items-center">
+                  <ShieldAlert size={14} className="mr-2" /> Backend Offline: Live Data Temporarily Unavailable
+              </span>
+            ) : activityFeed.length > 0 ? activityFeed.map((act, i) => (
+              <div key={i} className="flex items-center space-x-3 text-[10px] font-black uppercase tracking-widest text-[#00ff88]/80">
+                <span className="text-white opacity-40">●</span>
+                <span>{act.username || `User #${act.node_id}`}</span> 
+                <span className="text-white opacity-40">Reached Tier</span> 
+                <span className="text-white">{getTierDetails(act.tier).name}</span>
+                <span className="text-white opacity-40">with</span>
+                <span className="text-white">{Math.floor(act.coins / 1000)}K</span>
+                <span className="text-white opacity-40">Coins</span>
+              </div>
+            )) : (
+              <span className="text-[10px] font-black uppercase tracking-widest text-[#00ff88]/40 animate-pulse px-6">Initializing Platform Command Feed... Matrix Active.</span>
+            )}
+          </div>
         </div>
+
+        <div className="p-4 pb-24 h-full overflow-y-auto">
+          <div className="flex justify-between items-center mb-6">
+              <h2 className="text-3xl font-black text-white uppercase tracking-tighter">LEADERBOARD</h2>
+              <div className="flex bg-white/10 p-1 rounded-xl">
+                  <button 
+                      onClick={() => setLeaderboardTab('coins')}
+                      className={`px-4 py-2 rounded-lg text-[10px] font-black transition-all ${leaderboardTab === 'coins' ? 'bg-[#00ff88] text-black shadow-lg shadow-[#00ff88]/30' : 'text-white opacity-40'}`}
+                  >
+                      COINS
+                  </button>
+                  <button 
+                      onClick={() => setLeaderboardTab('tiers')}
+                      className={`px-4 py-2 rounded-lg text-[10px] font-black transition-all ${leaderboardTab === 'tiers' ? 'bg-[#00ff88] text-black shadow-lg shadow-[#00ff88]/30' : 'text-white opacity-40'}`}
+                  >
+                      TIERS
+                  </button>
+              </div>
+          </div>
 
         <div className="space-y-3">
             {(leaderboardTab === 'coins' ? leaderboardData.coins : leaderboardData.tiers).map((entry, index) => {

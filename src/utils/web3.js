@@ -19,8 +19,8 @@ const RPC_POOL = [
 const metadata = {
   name: 'AIPCORE',
   description: 'AIPCORE AI Web3 Gamified App',
-  url: 'https://nfengine.online',
-  icons: ['https://nfengine.online/icons/logo.png']
+  url: 'https://aipcore.online',
+  icons: ['https://aipcore.online/icons/logo.png']
 };
 
 let modalInstance = null;

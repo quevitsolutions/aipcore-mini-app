@@ -429,6 +429,21 @@ export const getGlobalTransparencyData = async () => {
     }
 };
 
+export const getOffchainReferralStats = async (nodeId) => {
+    try {
+        const referrals = await getDirectReferralsList(nodeId, 5);
+        return {
+            guests: referrals.map(r => ({
+                username: r.username || `User #${r.nodeId}`,
+                tier: r.tier,
+                nodeId: r.nodeId
+            }))
+        };
+    } catch (err) {
+        return { guests: [] };
+    }
+};
+
 // --- REWARD POOL HELPERS ---
 
 export const getPoolViewData = async (nodeId) => {

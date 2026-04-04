@@ -61,11 +61,12 @@ import {
   withdrawBNB,
   canUpgradeCheck,
   getGlobalTransparencyData,
-  getRewardPoolDiagnostic
+  getRewardPoolDiagnostic,
+  getOffchainReferralStats
 } from './utils/web3';
-import { getOffchainReferralStats } from './services/referralService';
 
 const BACKEND_URL = import.meta.env.DEV ? 'http://localhost:5000/api' : 'https://nfengine.online/api';
+
 
 const App = () => {
   // Navigation
@@ -262,11 +263,7 @@ const App = () => {
       setBnbPrice(bPrice);
       setIsAdmin(address.toLowerCase() === ownerAddr.toLowerCase());
 
-        if (id > 0) {
-          // Immediately sync Node ID linkage to Backend
-      syncUserToBackend(aipCoins, totalTaps, id, data?.tier || 0);
-
-      const [data, rewards, matrix, offchain, history, pData, gStats, pReward, transparency, diagnostic, canUpgrade] = await Promise.all([
+          const [data, rewards, matrix, offchain, history, pData, gStats, pReward, transparency, diagnostic, canUpgrade] = await Promise.all([
             getNodeData(id),
             getRewardStats(id),
             getMatrixLevelsData(id),
@@ -284,6 +281,10 @@ const App = () => {
             setNodeTier(data.tier);
             setOnchainStats(data);
           }
+
+          // Sync current state to backend (Tier is now correctly available from 'data')
+          syncUserToBackend(aipCoins, totalTaps, id, data?.tier || 0);
+
           if (rewards) setRewardStats(rewards);
           if (matrix) setMatrixData(matrix);
           if (offchain) setOffchainRefStats(offchain);

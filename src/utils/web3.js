@@ -325,11 +325,17 @@ export const upgradeTierTransaction = async (nodeId, toTier) => {
 };
 
 export const canUpgradeCheck = async (nodeId, levels = 1) => {
-    const contract = await getCoreContract();
     try {
-        return await contract.canUpgrade(nodeId, levels);
+        const viewContract = await getViewContract();
+        return await viewContract.canUpgrade(nodeId, levels);
     } catch (err) {
-        return false;
+        // Fallback to core contract
+        try {
+            const coreContract = await getCoreContract();
+            return await coreContract.canUpgrade(nodeId, levels);
+        } catch (fallbackErr) {
+            return false;
+        }
     }
 };
 

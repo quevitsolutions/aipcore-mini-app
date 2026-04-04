@@ -1632,6 +1632,7 @@ const App = () => {
     );
   };
 
+  const renderLeaderboard = () => (
     <div className="flex flex-col h-full overflow-hidden">
         {/* Live Activity Ticker (Sticky at top of Leaderboard) */}
         <div className="h-10 bg-white/5 backdrop-blur-md border-b border-white/5 flex items-center overflow-hidden z-30 shrink-0">

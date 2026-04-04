@@ -231,9 +231,6 @@ const App = () => {
   // --- CORE FUNCTIONS (Moved up to avoid TDZ errors) ---
   
   // 1. Sync User Off-chain Data to Backend (includes Telegram identity)
-  const syncUserToBackend = useCallback(async (coins, taps, nId, tier, tgUser) => {
-    // Only sync if there's an actual change since last success
-    if (coins === lastSyncedState.coins && taps === lastSyncedState.taps && !tgUser) return;
   const syncUserToBackend = async (coins, taps, nodeId, nodeTier, tgUser, directCount = 0) => {
     if (!userAddress) return;
     try {

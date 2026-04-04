@@ -1650,8 +1650,8 @@ const App = () => {
             )}
           </div>
         </div>
-
-        <div className="p-4 pb-24 h-full overflow-y-auto">
+  const renderLeaderboard = () => (
+    <div className="p-4 pb-24 h-full overflow-y-auto">
           <div className="flex justify-between items-center mb-6">
               <h2 className="text-3xl font-black text-white uppercase tracking-tighter">LEADERBOARD</h2>
               <div className="flex bg-white/10 p-1 rounded-xl">

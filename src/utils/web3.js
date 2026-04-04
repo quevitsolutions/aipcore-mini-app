@@ -311,6 +311,38 @@ export const upgradeTierTransaction = async (nodeId, toTier) => {
   return await tx.wait();
 };
 
+export const canUpgradeCheck = async (nodeId, levels = 1) => {
+    const contract = await getCoreContract();
+    try {
+        return await contract.canUpgrade(nodeId, levels);
+    } catch (err) {
+        return false;
+    }
+};
+
+export const getPendingReward = async (address) => {
+    const contract = await getCoreContract();
+    try {
+        const amount = await contract.pendingReward(address);
+        return formatBNB(amount);
+    } catch (err) {
+        return "0.00000";
+    }
+};
+
+export const withdrawBNB = async () => {
+    const modal = getAppKitModal();
+    const bridge = modal.getWalletProvider();
+    if (!bridge.walletProvider) throw new Error("Wallet not connected");
+    
+    const browserProvider = new ethers.BrowserProvider(bridge.walletProvider);
+    const signer = await browserProvider.getSigner();
+    const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, signer);
+    
+    const tx = await contract.withdraw();
+    return await tx.wait();
+};
+
 export const getDirectReferralsList = async (nodeId, count = 20) => {
     const contract = await getCoreContract();
     try {
@@ -375,6 +407,24 @@ export const getContractOwner = async () => {
         return config._owner;
     } catch (err) {
         console.error("Failed to fetch owner:", err);
+        return null;
+    }
+};
+
+export const getGlobalTransparencyData = async () => {
+    const contract = await getCoreContract();
+    try {
+        const data = await contract.getTransparencyData();
+        return {
+            totalNodes: Number(data[0]),
+            totalBNBDistributed: formatBNB(data[1]),
+            totalTiersSolved: Number(data[2]),
+            contractAddress: data[3],
+            ownerAddress: data[4],
+            isRenounced: data[5]
+        };
+    } catch (err) {
+        console.error("Transparency data fetch failed:", err);
         return null;
     }
 };
@@ -451,4 +501,23 @@ export const registerPoolNode = async (nodeId) => {
     
     const tx = await signedContract.registerNode(nodeId);
     return tx.wait();
+};
+
+export const getRewardPoolDiagnostic = async () => {
+    const contract = await getPoolContract();
+    try {
+        const info = await contract.getContractInfo();
+        return {
+            totalReceived: formatBNB(info[0]),
+            totalDistributed: formatBNB(info[1]),
+            pendingInContract: formatBNB(info[2]),
+            bronzeNodes: Number(info[3]),
+            silverNodes: Number(info[4]),
+            goldNodes: Number(info[5]),
+            contractAddress: info[6],
+            engineAddress: info[7]
+        };
+    } catch (err) {
+        return null;
+    }
 };

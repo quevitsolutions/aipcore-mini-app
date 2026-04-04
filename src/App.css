@@ -144,3 +144,37 @@
     scrollbar-color: var(--border-color) transparent;
   }
 }
+
+/* Activity Ticker Marquee */
+@keyframes marquee {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
+.ticker-scroll {
+  display: inline-flex;
+  white-space: nowrap;
+  animation: marquee 30s linear infinite;
+  gap: 40px;
+}
+
+/* Onboarding Modal Overlay */
+.onboarding-overlay {
+  background: rgba(0, 0, 0, 0.95);
+  backdrop-filter: blur(25px);
+  z-index: 9999;
+}
+
+.onboarding-dot {
+  width: 8px;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 50%;
+  transition: all 0.3s;
+}
+
+.onboarding-dot.active {
+  width: 24px;
+  background: #00ff88;
+  border-radius: 4px;
+}

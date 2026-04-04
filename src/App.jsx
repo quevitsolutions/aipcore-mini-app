@@ -19,7 +19,8 @@ import {
   ShieldCheck,
   Camera,
   Zap,
-  Check
+  Check,
+  Trophy
 } from 'lucide-react';
 import AipLogo from './icons/AipLogo';
 import { 
@@ -55,7 +56,12 @@ import {
   getGlobalPoolStats,
   claimPoolRewards,
   registerPoolNode,
-  invalidateProviderCache
+  invalidateProviderCache,
+  getPendingReward,
+  withdrawBNB,
+  canUpgradeCheck,
+  getGlobalTransparencyData,
+  getRewardPoolDiagnostic
 } from './utils/web3';
 import { getOffchainReferralStats } from './services/referralService';
 
@@ -101,6 +107,14 @@ const App = () => {
   const [explorerLevel, setExplorerLevel] = useState(1);
   const [explorerData, setExplorerData] = useState([]);
   const [explorerLoading, setExplorerLoading] = useState(false);
+  const [pendingWithdrawal, setPendingWithdrawal] = useState("0.0000");
+  const [globalTransparency, setGlobalTransparency] = useState(null);
+  const [poolDiagnostic, setPoolDiagnostic] = useState(null);
+  const [canUpgradeCurrent, setCanUpgradeCurrent] = useState(false);
+  const [leaderboardData, setLeaderboardData] = useState({ coins: [], tiers: [] });
+  const [leaderboardTab, setLeaderboardTab] = useState('coins'); // coins, tiers
+  const [adminPrice, setAdminPrice] = useState('');
+  const [adminAddr, setAdminAddr] = useState({ id: 0, addr: '' });
   const [tasks, setTasks] = useState(() => {
     const saved = localStorage.getItem('aipTasks');
     if (saved) {
@@ -120,6 +134,11 @@ const App = () => {
   const [lastClaimTime, setLastClaimTime] = useState(() => Number(localStorage.getItem('lastClaimTime')) || 0);
   const [isLoading, setIsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [lastBoardFetch, setLastBoardFetch] = useState(0); // Timestamp
+  const [showOnboarding, setShowOnboarding] = useState(() => !localStorage.getItem('aipOnboarded'));
+  const [onboardingStep, setOnboardingStep] = useState(0);
+  const [activityFeed, setActivityFeed] = useState([]);
+  const [lastSyncedState, setLastSyncedState] = useState({ coins: 0, taps: 0 });
 
   // Sync Tracking
   const lastSyncedRef = useRef({ coins: aipCoins, taps: totalTaps });
@@ -184,29 +203,46 @@ const App = () => {
   // --- CORE FUNCTIONS (Moved up to avoid TDZ errors) ---
   
   // 1. Sync User Off-chain Data to Backend
-  // 1. Sync User Off-chain Data to Backend
-  const syncUserToBackend = useCallback(async (coins, taps, node_id = null) => {
-    if (!userAddress) return;
+  const syncUserToBackend = useCallback(async (coins, taps, nId, tier) => {
+    // Only sync if there's an actual change since last success
+    if (coins === lastSyncedState.coins && taps === lastSyncedState.taps) return;
+    
     try {
-      const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
-      await fetch(`${BACKEND_URL}/user/sync`, {
+      const res = await fetch(`${BACKEND_URL}/user/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           address: userAddress,
-          username: tgUser?.username || "AIP_Warrior",
-          telegram_id: tgUser?.id || null,
-          node_id: node_id,
-          coins: Math.floor(coins),
-          taps: taps
+          node_id: nId,
+          coins: coins,
+          taps: taps,
+          node_tier: tier
         })
       });
+      if (res.ok) {
+          setLastSyncedState({ coins, taps });
+          console.debug("Backend Sync Successful");
+      }
     } catch (err) {
-      console.warn("Sync failed:", err);
+      console.error("Sync failed:", err);
     }
-  }, [userAddress]);
+  }, [userAddress, lastSyncedState]);
 
   // 2. Fetch Blockchain Data (Nodes, Tiers, Rewards)
+  const handleWithdraw = async () => {
+    if (isProcessing) return;
+    triggerHaptic('medium');
+    setIsProcessing(true);
+    try {
+      await withdrawBNB();
+      await syncBlockchainData(userAddress);
+    } catch (err) {
+      console.error("Withdrawal failed:", err);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const syncBlockchainData = useCallback(async (address) => {
     if (!address) return;
     setIsLoading(true);
@@ -228,40 +264,36 @@ const App = () => {
 
         if (id > 0) {
           // Immediately sync Node ID linkage to Backend
-          syncUserToBackend(aipCoins, totalTaps, id);
+      syncUserToBackend(aipCoins, totalTaps, id, data?.tier || 0);
 
-          const [data, rewards, matrix, offchain, history, pData, gStats] = await Promise.all([
+      const [data, rewards, matrix, offchain, history, pData, gStats, pReward, transparency, diagnostic, canUpgrade] = await Promise.all([
             getNodeData(id),
             getRewardStats(id),
             getMatrixLevelsData(id),
             getOffchainReferralStats(id),
             getIncomeHistory(id),
             getPoolViewData(id),
-            getGlobalPoolStats()
+            getGlobalPoolStats(),
+            getPendingReward(address),
+            getGlobalTransparencyData(),
+            getRewardPoolDiagnostic(),
+            canUpgradeCheck(id, 1)
           ]);
           
           if (data) {
             setNodeTier(data.tier);
             setOnchainStats(data);
           }
-          if (rewards) {
-            setRewardStats(rewards);
-          }
-          if (matrix) {
-            setMatrixData(matrix);
-          }
-          if (offchain) {
-            setOffchainRefStats(offchain);
-          }
-          if (history) {
-            setIncomeHistory(history);
-          }
-          if (pData) {
-            setRewardPoolData(pData);
-          }
-          if (gStats) {
-            setGlobalPoolStats(gStats);
-          }
+          if (rewards) setRewardStats(rewards);
+          if (matrix) setMatrixData(matrix);
+          if (offchain) setOffchainRefStats(offchain);
+          if (history) setIncomeHistory(history);
+          if (pData) setRewardPoolData(pData);
+          if (gStats) setGlobalPoolStats(gStats);
+          if (pReward) setPendingWithdrawal(pReward);
+          if (transparency) setGlobalTransparency(transparency);
+          if (diagnostic) setPoolDiagnostic(diagnostic);
+          if (canUpgrade !== undefined) setCanUpgradeCurrent(canUpgrade);
         } else {
           setNodeTier(0);
           setOnchainStats(null);
@@ -272,10 +304,65 @@ const App = () => {
           setRewardPoolData(null);
         }
     } catch (err) {
-      console.error("Sync error:", err);
+      console.error("Blockchain sync failed:", err);
     } finally {
       setIsLoading(false);
     }
+  }, [userAddress, aipCoins, totalTaps, syncUserToBackend]);
+
+  // 2. Optimized Periodic Sync (Every 60 Seconds)
+  useEffect(() => {
+    if (!userAddress || nodeId <= 0) return;
+
+    const syncInterval = setInterval(() => {
+      syncUserToBackend(aipCoins, totalTaps, nodeId, nodeTier);
+    }, 60000); // 1 Minute
+
+    return () => clearInterval(syncInterval);
+  }, [userAddress, nodeId, aipCoins, totalTaps, nodeTier, syncUserToBackend]);
+
+  // 3. Auto-sync on Tab Change
+  useEffect(() => {
+    if (userAddress && nodeId > 0) {
+      syncUserToBackend(aipCoins, totalTaps, nodeId, nodeTier);
+    }
+  }, [currentView, userAddress, nodeId, syncUserToBackend]); // Trigger on view change
+
+  const fetchLeaderboard = async (force = false) => {
+    // Only fetch once every 2 minutes unless forced
+    const now = Date.now();
+    if (!force && now - lastBoardFetch < 120000) return;
+    
+    try {
+      const res = await fetch(`${BACKEND_URL}/leaderboard`);
+      const data = await res.json();
+      if (data) {
+        setLeaderboardData(data);
+        setLastBoardFetch(now);
+      }
+    } catch (err) {
+      console.error("Leaderboard fetch failed:", err);
+    }
+  };
+
+  const fetchActivity = async () => {
+    try {
+      const res = await fetch(`${BACKEND_URL}/activity`);
+      const data = await res.json();
+      if (data) {
+          setActivityFeed(data);
+          setBackendError(false);
+      }
+    } catch (err) {
+      console.error("Activity fetch failed:", err);
+      setBackendError(true);
+    }
+  };
+
+  useEffect(() => {
+    fetchActivity();
+    const interval = setInterval(fetchActivity, 30000); // Pulse every 30s
+    return () => clearInterval(interval);
   }, []);
 
   // --- INITIALIZATION & SYNC EFFECTS ---
@@ -334,7 +421,7 @@ const App = () => {
             setTotalTaps(Number(data.total_taps));
           }
         })
-        .catch(err => console.log("New user or offline"));
+        .catch(() => {});
     }
   }, [userAddress]);
 
@@ -925,72 +1012,6 @@ const App = () => {
     }, 2000);
   };
 
-  const renderAdmin = () => (
-    <div className="p-4 pb-24 h-full overflow-y-auto">
-      <div className="flex justify-between items-center mb-6">
-          <div>
-              <h2 className="text-3xl font-black text-[#00ff88] tracking-tighter">ADMIN TERMINAL</h2>
-              <p className="text-sm opacity-100 text-white font-black uppercase tracking-widest italic">Auth & Core Protocol Management</p>
-          </div>
-          <div className="w-12 h-12 bg-[#00ff88]/10 rounded-2xl flex items-center justify-center text-[#00ff88]">
-              <ShieldCheck size={24} />
-          </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-4 mb-8">
-          <div className="glass-card p-5 rounded-3xl border-[#00ff88]/30 bg-[#00ff88]/5">
-              <p className="text-[12px] font-black opacity-100 text-white uppercase tracking-[0.2em] mb-1">Contract Fees</p>
-              <p className="text-2xl font-black text-[#00ff88] drop-shadow-md">{bnbBalance} <span className="text-sm opacity-100 text-white">BNB</span></p>
-              <button onClick={() => alert("Fees Swept to Treasury")} className="mt-4 w-full py-3 bg-white text-black font-black rounded-xl text-[11px] uppercase active:scale-95 transition-all shadow-lg">Sweep to Treasury</button>
-          </div>
-          <div className="glass-card p-5 rounded-3xl border-orange-500/30 bg-orange-500/5">
-              <p className="text-[12px] font-black opacity-100 text-white uppercase tracking-[0.2em] mb-1">Oracle Feed</p>
-              <p className="text-2xl font-black text-orange-400 drop-shadow-md">${(bnbPrice / 1e8).toFixed(2)}</p>
-              <button onClick={() => alert("Manual Price Synced")} className="mt-4 w-full py-3 bg-white text-black font-black rounded-xl text-[11px] uppercase active:scale-95 transition-all shadow-lg">Refresh Oracle</button>
-          </div>
-      </div>
-
-      <h3 className="text-[14px] font-black text-[#00ff88] mb-4 uppercase tracking-[0.2em]">AIP Protocol Snapshots</h3>
-      <div className="glass-card p-6 rounded-[32px] mb-8 border-dashed border-white/10 text-center">
-          <button 
-              onClick={takeSnapshot}
-              disabled={isSnapshotting}
-              className={`w-full py-4 rounded-2xl font-black text-sm flex items-center justify-center space-x-3 transition-all ${isSnapshotting ? 'bg-white/5' : 'bg-white text-black active:scale-95'}`}
-          >
-              {isSnapshotting ? <Loader2 size={18} className="animate-spin" /> : <Camera size={18} />}
-              <span>{isSnapshotting ? 'CAPTURING...' : 'TAKE CURRENT SNAPSHOT'}</span>
-          </button>
-          
-          {snapshotData.length > 0 && (
-              <div className="mt-6 space-y-2 text-left">
-                  <div className="flex justify-between items-center px-1">
-                      <span className="text-[11px] font-black opacity-100 text-white uppercase tracking-widest">Verified Snapshot</span>
-                      <span className="text-[11px] font-black text-[#00ff88] uppercase">{snapshotData.length} Targets</span>
-                  </div>
-                  {snapshotData.slice(0, 3).map((s, idx) => (
-                      <div key={idx} className="p-4 bg-white/10 rounded-2xl flex justify-between items-center border border-white/5 shadow-inner">
-                          <span className="text-[11px] font-mono text-white font-bold">{s.wallet}</span>
-                          <span className="text-[12px] font-black text-[#00ff88]">{s.coins.toLocaleString()} AIP</span>
-                      </div>
-                  ))}
-                  <button className="w-full mt-4 py-4 bg-[#00ff88] text-black font-black rounded-2xl text-[12px] uppercase tracking-widest shadow-xl active:scale-95">EXECUTE REWARD DISTRIBUTION</button>
-              </div>
-          )}
-      </div>
-
-      <h3 className="text-[14px] font-black text-[#00ff88] mb-4 uppercase tracking-[0.2em]">Objective Publisher</h3>
-      <div className="glass-card p-6 rounded-[32px] border border-white/5">
-          <div className="space-y-4">
-              <input type="text" placeholder="Task Title" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm focus:border-[#00ff88] outline-none" />
-              <input type="text" placeholder="Action Link" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-sm focus:border-[#00ff88] outline-none" />
-              <div className="flex space-x-2">
-                  <input type="number" placeholder="Reward" className="flex-1 bg-white/5 border border-white/10 rounded-xl p-3 text-sm outline-none" />
-                  <button className="px-6 py-3 bg-white text-black font-black rounded-xl text-xs">PUBLISH</button>
-              </div>
-          </div>
-      </div>
-    </div>
-  );
 
   const [clicks, setClicks] = useState([]);
   const handleTap = (e) => {
@@ -1017,7 +1038,30 @@ const App = () => {
 
   const renderHome = () => (
     <div className="flex flex-col h-full overflow-hidden relative">
-      {/* 1. Dashboard HUD (Top) */}
+      {/* 1. Live Activity Ticker */}
+      <div className="h-10 bg-white/5 backdrop-blur-md border-b border-white/5 flex items-center overflow-hidden z-30 shrink-0">
+        <div className="ticker-scroll">
+          {backendError ? (
+            <span className="text-[10px] font-black uppercase tracking-widest text-red-500/80 animate-pulse px-6 flex items-center">
+                <ShieldAlert size={14} className="mr-2" /> Backend Offline: Live Data Temporarily Unavailable
+            </span>
+          ) : activityFeed.length > 0 ? activityFeed.map((act, i) => (
+            <div key={i} className="flex items-center space-x-3 text-[10px] font-black uppercase tracking-widest text-[#00ff88]/80">
+              <span className="text-white opacity-40">●</span>
+              <span>{act.username || `User #${act.node_id}`}</span> 
+              <span className="text-white opacity-40">Reached Tier</span> 
+              <span className="text-white">{act.tier}</span>
+              <span className="text-white opacity-40">with</span>
+              <span className="text-white">{Math.floor(act.coins / 1000)}K</span>
+              <span className="text-white opacity-40">Coins</span>
+            </div>
+          )) : (
+            <span className="text-[10px] font-black uppercase tracking-widest text-[#00ff88]/40 animate-pulse px-6">Initializing Platform Command Feed... Matrix Active.</span>
+          )}
+        </div>
+      </div>
+
+      {/* 2. Dashboard HUD (Top) */}
       <div className="px-5 pt-3 z-20">
           <div className="glass-card p-3 rounded-2xl flex justify-between items-center border border-white/10 bg-white/[0.03]">
               <div className="text-center w-1/3 border-r border-white/10">
@@ -1158,7 +1202,7 @@ const App = () => {
             </div>
 
             <button 
-                onClick={handleCreateNode}
+                onClick={() => { triggerHaptic('medium'); handleCreateNode(); }}
                 disabled={isProcessing}
                 className="w-full py-5 bg-gradient-to-r from-[#00ff88] to-[#00ccff] text-black font-black text-[15px] tracking-wide rounded-2xl flex items-center justify-center space-x-3 active:scale-95 disabled:opacity-50 shadow-[0_0_20px_rgba(0,255,136,0.4)] transition-all"
             >
@@ -1180,25 +1224,27 @@ const App = () => {
                     </div>
                 </div>
                 <button 
-                    onClick={handleUpgradeTier}
+                    onClick={() => { triggerHaptic('medium'); handleUpgradeTier(); }}
                     disabled={isProcessing || nodeTier >= 18}
-                    className="w-full py-4 bg-[#00ff88] text-black font-black text-md rounded-2xl active:scale-95 disabled:opacity-50 shadow-[0_10px_20px_rgba(0,255,136,0.1)] flex flex-col items-center justify-center relative overflow-hidden"
+                    className={`w-full py-4 font-black text-md rounded-2xl active:scale-95 disabled:opacity-50 transition-all flex flex-col items-center justify-center relative overflow-hidden ${canUpgradeCurrent ? 'bg-[#00ff88] text-black shadow-[0_10px_30px_rgba(0,255,136,0.2)]' : 'bg-white/10 text-white/40 border border-white/10'}`}
                 >
                     {isProcessing ? (
-                        <Loader2 className="animate-spin mx-auto" />
+                        <Loader2 className="animate-spin" />
                     ) : (
                         <>
-                            <div className="absolute top-0 right-0 p-1">
-                                <Zap className="w-10 h-10 text-white/10" />
+                            <div className="flex items-center space-x-2">
+                                {canUpgradeCurrent ? <ShieldCheck size={18} /> : <ShieldAlert size={18} className="text-red-500/60" />}
+                                <span>{canUpgradeCurrent ? 'UPGRADE TIER NOW' : 'LOCKED: REQS NOT MET'}</span>
                             </div>
-                            <span className="text-xs font-black text-white px-2 py-0.5 mb-1 bg-black/40 rounded-lg uppercase tracking-[0.2em]">ACTIVATE LEVEL {nodeTier + 1}</span>
-                            <div className="flex flex-col items-center">
+                            <div className="flex flex-col items-center mt-1">
                                 {tierCosts[nodeTier] && (
-                                    <span className="text-sm font-black text-black">
-                                       ${getTierUSDPrice(nodeTier)} USD <span className="opacity-40 font-bold mx-1">/</span> {Number(formatBNB(tierCosts[nodeTier])).toFixed(4)} <span className="text-[10px]">BNB</span>
+                                    <span className="text-[10px] font-black tracking-widest uppercase opacity-70">
+                                        COST: {Number(formatBNB(tierCosts[nodeTier])).toFixed(3)} BNB (~${getTierUSDPrice(nodeTier)})
                                     </span>
                                 )}
-                                <span className="text-[9px] font-black opacity-40 uppercase tracking-tighter mt-1 italic">Unlocks Reward Layer {nodeTier + 1}</span>
+                                <span className={`text-[9px] font-black uppercase tracking-tighter mt-1 italic ${canUpgradeCurrent ? 'text-black/60' : 'text-red-500/60'}`}>
+                                    {canUpgradeCurrent ? `Unlocks Reward Layer ${nodeTier + 1}` : 'Check Requirements Below'}
+                                </span>
                             </div>
                         </>
                     )}
@@ -1359,6 +1405,136 @@ const App = () => {
     </div>
   );
 
+  const renderAdmin = () => {
+    if (!isAdmin) return <div className="p-8 text-center"><p className="text-red-500 font-black">ACCESS DENIED: OWNER ONLY</p></div>;
+
+    const handleUpdatePrice = async () => {
+        if (!adminPrice) return;
+        setIsProcessing(true);
+        triggerHaptic('medium');
+        try {
+            const tx = await manualUpdatePrice(adminPrice);
+            if (tx) alert("Price update successful!");
+        } catch (e) { console.error(e); }
+        finally { setIsProcessing(false); }
+    };
+
+    const handleExecuteRewardPool = async () => {
+        setIsProcessing(true);
+        triggerHaptic('warning');
+        try {
+            const tx = await executeRewardPool();
+            if (tx) alert("Reward Pool Distribution Executed!");
+        } catch (e) { console.error(e); }
+        finally { setIsProcessing(false); }
+    };
+
+    return (
+        <div className="p-6 pb-24 h-full overflow-y-auto space-y-6">
+            <h2 className="text-3xl font-black text-[#00ff88] uppercase tracking-tighter">ADMIN TERMINAL</h2>
+            
+            <div className="glass-card p-6 rounded-3xl border-[#00ff88]/30 bg-[#00ff88]/5">
+                <p className="text-[10px] font-black text-[#00ff88] uppercase tracking-widest mb-4">Oracle Management</p>
+                <div className="flex space-x-3">
+                    <input 
+                        type="number" 
+                        placeholder="New BNB Price (USD)" 
+                        value={adminPrice} 
+                        onChange={(e) => setAdminPrice(e.target.value)}
+                        className="flex-grow bg-black/40 border border-white/10 rounded-2xl px-4 text-white text-sm font-bold focus:border-[#00ff88] outline-none"
+                    />
+                    <button 
+                        onClick={handleUpdatePrice}
+                        disabled={isProcessing}
+                        className="px-6 py-4 bg-[#00ff88] text-black font-black rounded-2xl text-[10px] uppercase active:scale-95 disabled:opacity-50"
+                    >
+                        UPDATE
+                    </button>
+                </div>
+            </div>
+
+            <div className="glass-card p-6 rounded-3xl border-white/10 bg-white/5">
+                <p className="text-[10px] font-black opacity-40 uppercase tracking-widest mb-4">System Configurations</p>
+                <div className="space-y-4">
+                    <div className="flex justify-between items-center p-3 bg-black/20 rounded-2xl border border-white/5">
+                        <span className="text-[10px] font-black opacity-60">CONTRACT OWNER</span>
+                        <span className="text-[10px] font-mono text-[#00ff88]">{userAddress?.slice(0,10)}...</span>
+                    </div>
+                    <div className="flex justify-between items-center p-3 bg-black/20 rounded-2xl border border-white/5">
+                        <span className="text-[10px] font-black opacity-60">DB STATUS</span>
+                        <span className="text-[10px] font-black text-[#00ff88]">CONNECTED (V2)</span>
+                    </div>
+                </div>
+            </div>
+
+            {poolDiagnostic && (
+                <div className="glass-card p-6 rounded-3xl border-yellow-500/20 bg-yellow-500/5">
+                    <p className="text-[10px] font-black text-yellow-500 uppercase tracking-widest mb-4">Reward Pool Health</p>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div className="text-center p-3 bg-black/40 rounded-xl border border-white/5">
+                            <p className="text-[9px] opacity-40 mb-1">POOL BALANCE</p>
+                            <p className="text-sm font-black">{poolDiagnostic.balance} BNB</p>
+                        </div>
+                        <div className="text-center p-3 bg-black/40 rounded-xl border border-white/5">
+                            <p className="text-[9px] opacity-40 mb-1">TOTAL SHARES</p>
+                            <p className="text-sm font-black">{poolDiagnostic.totalShares || '0'}</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+  };
+
+  const renderLeaderboard = () => (
+    <div className="p-4 pb-24 h-full overflow-y-auto">
+        <div className="flex justify-between items-center mb-6">
+            <h2 className="text-3xl font-black text-white uppercase tracking-tighter">LEADERBOARD</h2>
+            <div className="flex bg-white/10 p-1 rounded-xl">
+                <button 
+                    onClick={() => setLeaderboardTab('coins')}
+                    className={`px-4 py-2 rounded-lg text-[10px] font-black transition-all ${leaderboardTab === 'coins' ? 'bg-[#00ff88] text-black shadow-lg shadow-[#00ff88]/30' : 'text-white opacity-40'}`}
+                >
+                    COINS
+                </button>
+                <button 
+                    onClick={() => setLeaderboardTab('tiers')}
+                    className={`px-4 py-2 rounded-lg text-[10px] font-black transition-all ${leaderboardTab === 'tiers' ? 'bg-[#00ff88] text-black shadow-lg shadow-[#00ff88]/30' : 'text-white opacity-40'}`}
+                >
+                    TIERS
+                </button>
+            </div>
+        </div>
+
+        <div className="space-y-3">
+            {(leaderboardTab === 'coins' ? leaderboardData.coins : leaderboardData.tiers).map((entry, index) => {
+                const isTop3 = index < 3;
+                const colors = ['#FFD700', '#C0C0C0', '#CD7F32']; // Gold, Silver, Bronze
+                return (
+                    <div 
+                        key={index} 
+                        className={`glass-card p-4 rounded-3xl flex justify-between items-center border transition-all ${isTop3 ? 'bg-gradient-to-r from-white/[0.05] to-transparent border-white/20' : 'border-white/5 bg-white/[0.01]'}`}
+                    >
+                        <div className="flex items-center space-x-4">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-black text-xs ${isTop3 ? '' : 'bg-white/5 text-white/30'}`} style={isTop3 ? { backgroundColor: colors[index], color: 'black' } : {}}>
+                                {index + 1}
+                            </div>
+                            <div>
+                                <p className="text-sm font-black text-white uppercase">{entry.username || `User #${entry.node_id}`}</p>
+                                <p className="text-[10px] font-black text-[#00ff88] uppercase tracking-widest opacity-60">ID {entry.node_id} • TIER {entry.tier || entry.score || 0}</p>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-sm font-black text-white">{entry.score.toLocaleString()}</p>
+                            <p className="text-[9px] font-black opacity-30 uppercase tracking-tighter">{leaderboardTab === 'coins' ? 'AIP COINS' : 'NODE TIER'}</p>
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    </div>
+  );
+
   const renderAirdrop = () => (
     <div className="p-4 pb-24 h-full overflow-y-auto font-black">
       <h2 className="text-3xl font-black mb-1 text-white uppercase tracking-tighter">TRANSFERS & STATS</h2>
@@ -1375,20 +1551,39 @@ const App = () => {
                
                <div className="glass-card p-8 rounded-[40px] border-white/20 bg-white/[0.02]">
                  <div className="flex justify-between items-center mb-6">
-                   <span className="px-4 py-1.5 bg-[#00ff88]/10 rounded-full text-[12px] font-black tracking-widest text-[#00ff88] uppercase border border-[#00ff88]/20 shadow-inner">Auth Off-Chain Data</span>
+                   <span className="px-4 py-1.5 bg-[#00ff88]/10 rounded-full text-[12px] font-black tracking-widest text-[#00ff88] uppercase border border-[#00ff88]/20 shadow-inner">Global Core Stats</span>
                    <TrendingUp className="w-6 h-6 text-[#00ff88]" />
                  </div>
                  <div className="grid grid-cols-2 gap-6">
                    <div className="p-4 bg-white/5 rounded-3xl border border-white/5">
-                     <p className="text-[12px] font-black opacity-100 text-[#00ff88] uppercase mb-1 tracking-widest">AIP Credits</p>
-                     <p className="text-3xl font-black text-white">{aipCoins.toLocaleString()}</p>
+                     <p className="text-[12px] font-black opacity-100 text-[#00ff88] uppercase mb-1 tracking-widest">Total Nodes</p>
+                     <p className="text-3xl font-black text-white">{globalTransparency ? globalTransparency.totalNodes.toLocaleString() : '...'}</p>
                    </div>
                    <div className="p-4 bg-white/5 rounded-3xl border border-white/5">
-                     <p className="text-[12px] font-black opacity-100 text-[#00ff88] uppercase mb-1 tracking-widest">Energy Cap</p>
-                     <p className="text-3xl font-black text-white">{energy}</p>
+                     <p className="text-[12px] font-black opacity-100 text-[#00ff88] uppercase mb-1 tracking-widest">BNB Distributed</p>
+                     <p className="text-xl font-black text-white">{globalTransparency ? globalTransparency.totalBNBDistributed : '...'}</p>
                    </div>
                  </div>
                </div>
+
+               {Number(pendingWithdrawal) > 0 && (
+                   <div className="p-6 glass-card rounded-3xl border border-yellow-500/30 bg-yellow-500/5 backdrop-blur-xl animate-pulse">
+                       <div className="flex justify-between items-center">
+                           <div>
+                               <p className="text-[10px] font-black text-yellow-500 uppercase tracking-widest">Withdrawable Rewards</p>
+                               <p className="text-2xl font-black text-white">{pendingWithdrawal} <span className="text-xs opacity-50">BNB</span></p>
+                           </div>
+                           <button 
+                               onClick={handleWithdraw}
+                               disabled={isProcessing}
+                               className="px-8 py-3 bg-yellow-500 text-black font-black rounded-2xl text-[12px] uppercase shadow-[0_0_20px_rgba(234,179,8,0.4)] active:scale-95 transition-all"
+                           >
+                               {isProcessing ? 'PROCESSING...' : 'WITHDRAW NOW'}
+                           </button>
+                       </div>
+                   </div>
+               )}
+
                <div className="p-6 glass-card rounded-3xl border border-[#00ff88]/10 bg-[#00ff88]/[0.02]"><div className="flex justify-between items-center mb-4"><div><p className="text-[10px] font-black opacity-40 uppercase tracking-widest">Reward Potential</p><p className="text-2xl font-black text-[#00ff88]">{aipRewards.toLocaleString()} <span className="text-xs opacity-50">AIP</span></p></div><button onClick={handleConvertCoins} className="px-6 py-3 bg-white text-black font-black rounded-2xl text-[10px] uppercase active:scale-95 transition-transform flex items-center space-x-2"><Zap size={14} /><span>Convert Coins</span></button></div><p className="text-[9px] opacity-30 italic">* 1,000 AipCoins = 1 AIP Reward Unit</p></div>
                <div className={`glass-card p-6 rounded-3xl border-l-4 ${nodeId > 0 ? 'border-[#00ff88]' : 'border-red-500'}`}><p className="text-[10px] font-black opacity-30 uppercase tracking-widest mb-2">Conversion Status</p><div className="flex justify-between items-center"><span className="text-xl font-black">{nodeId > 0 ? 'CONVERTED NODE' : 'PENDING ACTIVATION'}</span>{nodeId === 0 && <button onClick={() => setCurrentView('mine')} className="text-[10px] font-black bg-red-500/10 text-red-500 px-3 py-1 rounded-full border border-red-500/20">ACTIVATE NOW</button>}</div></div>
                {nodeId > 0 && rewardStats && (
@@ -1403,11 +1598,17 @@ const App = () => {
     </div>
   );
 
+  const triggerHaptic = (type = 'light') => {
+    if (window.Telegram?.WebApp?.HapticFeedback) {
+        window.Telegram.WebApp.HapticFeedback.impactOccurred(type);
+    }
+  };
+
   const SidebarItem = ({ id, icon, label, color }) => {
     const Icon = icon;
     return (
       <button 
-        onClick={() => setCurrentView(id)} 
+        onClick={() => { triggerHaptic(); setCurrentView(id); if (id === 'leaderboard') fetchLeaderboard(); }} 
         className={`sidebar-item w-full flex items-center space-x-3 px-6 py-4 rounded-2xl ${currentView === id ? 'active' : 'opacity-100 font-bold'}`}
       >
         <Icon size={20} className={color || 'text-white'} />
@@ -1416,8 +1617,67 @@ const App = () => {
     );
   };
 
+  const renderOnboarding = () => {
+    const slides = [
+      { 
+        title: "MINE", 
+        desc: "Tap the core to generate AIP Energy and mine off-chain coins.", 
+        icon: <Pickaxe size={64} className="text-[#00ff88]" />,
+        accent: "bg-[#00ff88]/20"
+      },
+      { 
+        title: "CONNECT", 
+        desc: "Link your Web3 wallet to activate your node status on the blockchain.", 
+        icon: <Wallet size={64} className="text-blue-400" />,
+        accent: "bg-blue-400/20"
+      },
+      { 
+        title: "EARN", 
+        desc: "Launch your node and earn automated BNB rewards from the matrix ecosystem.", 
+        icon: <Flame size={64} className="text-orange-500" />,
+        accent: "bg-orange-500/20"
+      }
+    ];
+
+    const currentSlide = slides[onboardingStep];
+
+    const handleNext = () => {
+      triggerHaptic();
+      if (onboardingStep < slides.length - 1) {
+        setOnboardingStep(onboardingStep + 1);
+      } else {
+        localStorage.setItem('aipOnboarded', 'true');
+        setShowOnboarding(false);
+      }
+    };
+
+    return (
+      <div className="fixed inset-0 onboarding-overlay flex flex-col items-center justify-center p-8 text-center">
+        <div className={`w-32 h-32 rounded-full ${currentSlide.accent} flex items-center justify-center mb-8 animate-pulse`}>
+          {currentSlide.icon}
+        </div>
+        <h2 className="text-5xl font-black text-white uppercase tracking-tighter mb-4">{currentSlide.title}</h2>
+        <p className="text-lg font-black text-white/60 uppercase tracking-widest leading-tight max-w-xs">{currentSlide.desc}</p>
+        
+        <div className="flex space-x-2 mt-12 mb-12">
+            {slides.map((_, i) => (
+              <div key={i} className={`onboarding-dot ${i === onboardingStep ? 'active' : ''}`} />
+            ))}
+        </div>
+
+        <button 
+          onClick={handleNext}
+          className="w-full max-w-xs py-5 bg-white text-black font-black rounded-3xl text-sm uppercase tracking-[0.2em] shadow-xl active:scale-95 transition-all"
+        >
+          {onboardingStep === slides.length - 1 ? 'LAUNCH DASHBOARD' : 'CONTINUE'}
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="h-screen w-full relative flex lg:flex-row bg-black antialiased font-['Outfit'] overflow-hidden">
+      {showOnboarding && renderOnboarding()}
       <div className="matrix-grid"></div>
       
       {/* 1. Left Sidebar (Desktop Only) */}
@@ -1435,6 +1695,7 @@ const App = () => {
           <SidebarItem id="mine" icon={TrendingUp} label="Mine Upgrades" />
           <SidebarItem id="pool" icon={Flame} label="Reward Pool" />
           <SidebarItem id="friends" icon={Users} label="Team Matrix" />
+          <SidebarItem id="leaderboard" icon={Trophy} label="Leaders" />
           <SidebarItem id="earn" icon={Gift} label="Daily Tasks" />
           <SidebarItem id="airdrop" icon={Wallet} label="AIP Stats" />
           {isAdmin && <SidebarItem id="admin" icon={ShieldCheck} label="Admin Terminal" color="text-[#00ff88]" />}
@@ -1475,13 +1736,16 @@ const App = () => {
           </header>
 
           <main className="flex-grow z-10 overflow-hidden main-content-scroll">
-            {currentView === 'home' && renderHome()}
-            {currentView === 'mine' && renderMine()}
-            {currentView === 'pool' && renderPool()}
-            {currentView === 'friends' && renderFriends()}
-            {currentView === 'airdrop' && renderAirdrop()}
-            {currentView === 'earn' && renderEarn()}
-            {currentView === 'admin' && renderAdmin()}
+            <div key={currentView} className="view-animate h-full">
+                {currentView === 'home' && renderHome()}
+                {currentView === 'mine' && renderMine()}
+                {currentView === 'pool' && renderPool()}
+                {currentView === 'friends' && renderFriends()}
+                {currentView === 'airdrop' && renderAirdrop()}
+                {currentView === 'earn' && renderEarn()}
+                {currentView === 'admin' && renderAdmin()}
+                {currentView === 'leaderboard' && renderLeaderboard()}
+            </div>
           </main>
 
           {/* Mobile Navigation */}
@@ -1489,9 +1753,10 @@ const App = () => {
             <button onClick={() => setCurrentView('home')} className={`nav-item flex flex-col items-center justify-center w-14 h-14 rounded-2xl ${currentView === 'home' ? 'active' : 'opacity-80'}`}><Pickaxe size={22} /><span className="text-[11px] mt-1 font-black uppercase tracking-tighter">Tap</span></button>
             <button onClick={() => setCurrentView('mine')} className={`nav-item flex flex-col items-center justify-center w-14 h-14 rounded-2xl ${currentView === 'mine' ? 'active' : 'opacity-80'}`}><TrendingUp size={22} /><span className="text-[11px] mt-1 font-black uppercase tracking-tighter">Mine</span></button>
             <button onClick={() => setCurrentView('pool')} className={`nav-item flex flex-col items-center justify-center w-14 h-14 rounded-2xl ${currentView === 'pool' ? 'active' : 'opacity-80'}`}><Flame size={22} /><span className="text-[11px] mt-1 font-black uppercase tracking-tighter">Pool</span></button>
-            <button onClick={() => setCurrentView('friends')} className={`nav-item flex flex-col items-center justify-center w-14 h-14 rounded-2xl ${currentView === 'friends' ? 'active' : 'opacity-80'}`}><Users size={22} /><span className="text-[11px] mt-1 font-black uppercase tracking-tighter">Team</span></button>
-            <button onClick={() => setCurrentView('earn')} className={`nav-item flex flex-col items-center justify-center w-14 h-14 rounded-2xl ${currentView === 'earn' ? 'active' : 'opacity-80'}`}><Gift size={22} /><span className="text-[11px] mt-1 font-black uppercase tracking-tighter">Earn</span></button>
-            <button onClick={() => setCurrentView('airdrop')} className={`nav-item flex flex-col items-center justify-center w-14 h-14 rounded-2xl ${currentView === 'airdrop' ? 'active' : 'opacity-80'}`}><Wallet size={22} /><span className="text-[11px] mt-1 font-black uppercase tracking-tighter">Stats</span></button>
+            <button onClick={() => { triggerHaptic(); setCurrentView('friends'); }} className={`nav-item flex flex-col items-center justify-center w-14 h-14 rounded-2xl ${currentView === 'friends' ? 'active' : 'opacity-80'}`}><Users size={22} /><span className="text-[11px] mt-1 font-black uppercase tracking-tighter">Team</span></button>
+            <button onClick={() => { triggerHaptic(); setCurrentView('leaderboard'); fetchLeaderboard(); }} className={`nav-item flex flex-col items-center justify-center w-14 h-14 rounded-2xl ${currentView === 'leaderboard' ? 'active' : 'opacity-80'}`}><Trophy size={22} /><span className="text-[11px] mt-1 font-black uppercase tracking-tighter">Leaders</span></button>
+            <button onClick={() => { triggerHaptic(); setCurrentView('earn'); }} className={`nav-item flex flex-col items-center justify-center w-14 h-14 rounded-2xl ${currentView === 'earn' ? 'active' : 'opacity-80'}`}><Gift size={22} /><span className="text-[11px] mt-1 font-black uppercase tracking-tighter">Earn</span></button>
+            <button onClick={() => { triggerHaptic(); setCurrentView('airdrop'); }} className={`nav-item flex flex-col items-center justify-center w-14 h-14 rounded-2xl ${currentView === 'airdrop' ? 'active' : 'opacity-80'}`}><Wallet size={22} /><span className="text-[11px] mt-1 font-black uppercase tracking-tighter">Stats</span></button>
           </nav>
         </div>
       </div>

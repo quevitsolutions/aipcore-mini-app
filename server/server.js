@@ -46,7 +46,8 @@ const initDB = async () => {
                 node_id BIGINT UNIQUE,
                 aip_coins BIGINT DEFAULT 0,
                 total_taps BIGINT DEFAULT 0,
-                last_synced TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                last_synced TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                node_tier BIGINT DEFAULT 0
             );
 
             ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_id BIGINT;
@@ -88,19 +89,19 @@ app.get('/api/user/:address', async (req, res) => {
 });
 
 app.post('/api/user/sync', async (req, res) => {
-    const { address, username, telegram_id, node_id, coins, taps } = req.body;
+    const { address, username, telegram_id, node_id, coins, taps, node_tier } = req.body;
     try {
         const query = `
-            INSERT INTO users (wallet_address, username, telegram_id, node_id, aip_coins, total_taps, last_synced)
-            VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+            INSERT INTO users (wallet_address, username, telegram_id, node_id, aip_coins, total_taps, node_tier, last_synced)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
             ON CONFLICT (wallet_address) DO UPDATE 
-            SET aip_coins = $5, total_taps = $6, last_synced = CURRENT_TIMESTAMP, 
+            SET aip_coins = $5, total_taps = $6, node_tier = $7, last_synced = CURRENT_TIMESTAMP, 
                 telegram_id = EXCLUDED.telegram_id,
                 node_id = EXCLUDED.node_id,
                 username = EXCLUDED.username
             RETURNING *;
         `;
-        const result = await pool.query(query, [address, username, telegram_id, node_id, coins, taps]);
+        const result = await pool.query(query, [address, username, telegram_id, node_id, coins, taps, node_tier || 0]);
         res.json(result.rows[0]);
     } catch (err) {
         res.status(500).json({ error: err.message });
@@ -121,6 +122,45 @@ app.get('/api/user/node/:nodeId', async (req, res) => {
             user.username = `@${user.username}`;
         }
         res.json(user);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+app.get('/api/leaderboard', async (req, res) => {
+    try {
+        const topCoins = await pool.query(`
+            SELECT username, node_id, aip_coins as score, node_tier as tier, wallet_address as wallet
+            FROM users 
+            ORDER BY aip_coins DESC 
+            LIMIT 50
+        `);
+        const topTiers = await pool.query(`
+            SELECT username, node_id, node_tier as score, aip_coins as coins, wallet_address as wallet
+            FROM users 
+            WHERE node_tier > 0
+            ORDER BY node_tier DESC, aip_coins DESC
+            LIMIT 50
+        `);
+        res.json({
+            coins: topCoins.rows,
+            tiers: topTiers.rows
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Activity Feed: Recent Platform Events
+app.get('/api/activity', async (req, res) => {
+    try {
+        const result = await pool.query(`
+            SELECT username, node_id, node_tier as tier, aip_coins as coins, last_synced as time
+            FROM users 
+            ORDER BY last_synced DESC 
+            LIMIT 10
+        `);
+        res.json(result.rows);
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

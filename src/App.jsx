@@ -101,17 +101,26 @@ const App = () => {
   const [matrixData, setMatrixData] = useState([]);
 
   // Tier Display Helper
-  const getTierDetails = (tier) => {
+  const getTierDetails = (tier, hasNode = false) => {
     const t = Number(tier);
     if (t === 1) return { name: 'BRONZE', color: '#cd7f32', bg: 'bg-orange-900/20' };
     if (t === 2) return { name: 'SILVER', color: '#c0c0c0', bg: 'bg-slate-400/20' };
     if (t === 3) return { name: 'GOLD', color: '#ffd700', bg: 'bg-yellow-600/20' };
     if (t === 4) return { name: 'PLATINUM', color: '#e5e4e2', bg: 'bg-indigo-300/20' };
     if (t === 5) return { name: 'DIAMOND', color: '#b9f2ff', bg: 'bg-cyan-300/20' };
+    if (t === 6) return { name: 'RUBY', color: '#e0115f', bg: 'bg-rose-600/20' };
+    if (t === 7) return { name: 'EMERALD', color: '#50c878', bg: 'bg-emerald-600/20' };
+    if (t === 8) return { name: 'SAPPHIRE', color: '#0f52ba', bg: 'bg-blue-600/20' };
+    if (t === 9) return { name: 'TOPAZ', color: '#ffc87c', bg: 'bg-orange-400/20' };
+    if (t >= 10) return { name: `ELITE L${t}`, color: '#00ff88', bg: 'bg-green-600/20' };
+    
+    // If user has a node but is Tier 0 (newly registered)
+    if (hasNode) return { name: 'RECRUIT', color: '#ffa500', bg: 'bg-orange-600/20' };
+    
     return { name: 'GUEST', color: '#ffffff', bg: 'bg-white/10' };
   };
 
-  const tierInfo = getTierDetails(nodeTier);
+  const tierInfo = getTierDetails(nodeTier, nodeId > 0);
   const [offchainRefStats, setOffchainRefStats] = useState({ 
     rawInvites: 0, 
     offlineJoined: 0,
@@ -460,18 +469,29 @@ const App = () => {
     }
 
     const modal = getAppKitModal();
+    
+    // Smooth Auto-connect: Check for existing session immediately on mount
+    const currentAccount = modal.getAccount();
+    if (currentAccount && currentAccount.isConnected && currentAccount.address) {
+      console.log("Auto-connecting existing session:", currentAccount.address);
+      setUserAddress(currentAccount.address);
+      syncBlockchainData(currentAccount.address);
+    }
+
     const unsubscribe = modal.subscribeAccount(state => {
       invalidateProviderCache();
       if (state.isConnected && state.address) {
-        setUserAddress(state.address);
-        syncBlockchainData(state.address);
+        if (state.address !== userAddress) {
+          setUserAddress(state.address);
+          syncBlockchainData(state.address);
+        }
       } else {
         setUserAddress(null);
       }
     });
 
     return () => unsubscribe && unsubscribe();
-  }, [syncBlockchainData]);
+  }, [syncBlockchainData, userAddress]);
 
 
   useEffect(() => {
@@ -1121,19 +1141,19 @@ const App = () => {
                 <>
                   <div className="text-center w-1/3 border-r border-white/10">
                       <p className="text-[9px] font-black uppercase text-[#00ff88]/60 tracking-widest mb-0.5">Earned (BNB)</p>
-                      <p className="text-[14px] font-black text-[#00ff88]">{rewardStats ? rewardStats.total : '0.0000'}</p>
+                      <p className="text-[14px] font-black text-[#00ff88]">{isLoading ? '...' : (rewardStats ? rewardStats.total : '0.0000')}</p>
                   </div>
                   <div className="text-center w-1/3 border-r border-white/10">
                       <p className="text-[9px] font-black uppercase text-white/50 tracking-widest mb-0.5">18-Lvl Team</p>
-                      <p className="text-[14px] font-black text-white">{onchainStats ? onchainStats.totalMatrixNodes : '0'}</p>
+                      <p className="text-[14px] font-black text-white">{isLoading ? '...' : (onchainStats ? onchainStats.totalMatrixNodes : '0')}</p>
                   </div>
                   <div className="text-center w-1/4 border-r border-white/10">
                       <p className="text-[9px] font-black uppercase text-white/50 tracking-widest mb-0.5">Level</p>
-                      <p className="text-[12px] font-black" style={{ color: tierInfo.color }}>{tierInfo.name}</p>
+                      <p className="text-[12px] font-black" style={{ color: tierInfo.color }}>{isLoading ? '...' : tierInfo.name}</p>
                   </div>
                   <div className="text-center w-1/4">
                       <p className="text-[9px] font-black uppercase text-white/50 tracking-widest mb-0.5">Node ID</p>
-                      <p className="text-[14px] font-black text-white">{nodeId > 0 ? `#${nodeId}` : 'NONE'}</p>
+                      <p className="text-[14px] font-black text-white">{isLoading ? '...' : (nodeId > 0 ? `#${nodeId}` : 'NONE')}</p>
                   </div>
                 </>
               )}

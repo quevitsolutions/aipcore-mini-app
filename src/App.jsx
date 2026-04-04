@@ -92,9 +92,26 @@ const App = () => {
   const [bnbPrice, setBnbPrice] = useState(0);
   const [isAdmin, setIsAdmin] = useState(false);
   const [isSnapshotting, setIsSnapshotting] = useState(false);
+
+  // Telegram Account State
+  const [telegramUser, setTelegramUser] = useState(null); // { id, username, first_name }
+  const [telegramLinked, setTelegramLinked] = useState(false);
   const [aipRewards, setAipRewards] = useState(() => Number(localStorage.getItem('aipRewards')) || 0);
   const [snapshotData, setSnapshotData] = useState([]);
   const [matrixData, setMatrixData] = useState([]);
+
+  // Tier Display Helper
+  const getTierDetails = (tier) => {
+    const t = Number(tier);
+    if (t === 1) return { name: 'BRONZE', color: '#cd7f32', bg: 'bg-orange-900/20' };
+    if (t === 2) return { name: 'SILVER', color: '#c0c0c0', bg: 'bg-slate-400/20' };
+    if (t === 3) return { name: 'GOLD', color: '#ffd700', bg: 'bg-yellow-600/20' };
+    if (t === 4) return { name: 'PLATINUM', color: '#e5e4e2', bg: 'bg-indigo-300/20' };
+    if (t === 5) return { name: 'DIAMOND', color: '#b9f2ff', bg: 'bg-cyan-300/20' };
+    return { name: 'GUEST', color: '#ffffff', bg: 'bg-white/10' };
+  };
+
+  const tierInfo = getTierDetails(nodeTier);
   const [offchainRefStats, setOffchainRefStats] = useState({ 
     rawInvites: 0, 
     offlineJoined: 0,
@@ -204,31 +221,38 @@ const App = () => {
 
   // --- CORE FUNCTIONS (Moved up to avoid TDZ errors) ---
   
-  // 1. Sync User Off-chain Data to Backend
-  const syncUserToBackend = useCallback(async (coins, taps, nId, tier) => {
+  // 1. Sync User Off-chain Data to Backend (includes Telegram identity)
+  const syncUserToBackend = useCallback(async (coins, taps, nId, tier, tgUser) => {
     // Only sync if there's an actual change since last success
-    if (coins === lastSyncedState.coins && taps === lastSyncedState.taps) return;
+    if (coins === lastSyncedState.coins && taps === lastSyncedState.taps && !tgUser) return;
     
+    // Resolve telegram info from parameter OR state
+    const resolvedTg = tgUser || telegramUser;
+    const tgId   = resolvedTg?.id       || null;
+    const tgName = resolvedTg?.username || resolvedTg?.first_name || null;
+
     try {
       const res = await fetch(`${BACKEND_URL}/user/sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          address: userAddress,
-          node_id: nId,
-          coins: coins,
-          taps: taps,
-          node_tier: tier
+          address:     userAddress,
+          node_id:     nId,
+          coins:       coins,
+          taps:        taps,
+          node_tier:   tier || 0,
+          telegram_id: tgId,
+          username:    tgName
         })
       });
       if (res.ok) {
           setLastSyncedState({ coins, taps });
-          console.debug("Backend Sync Successful");
+          console.debug("Backend Sync Successful", { tgId, tgName, tier });
       }
     } catch (err) {
       console.error("Sync failed:", err);
     }
-  }, [userAddress, lastSyncedState]);
+  }, [userAddress, lastSyncedState, telegramUser]);
 
   // 2. Fetch Blockchain Data (Nodes, Tiers, Rewards)
   const handleWithdraw = async () => {
@@ -284,8 +308,8 @@ const App = () => {
             setOnchainStats(data);
           }
 
-          // Sync current state to backend (Tier is now correctly available from 'data')
-          syncUserToBackend(aipCoins, totalTaps, id, data?.tier || 0);
+          // Sync current state to backend (Tier + Telegram identity included)
+          syncUserToBackend(aipCoins, totalTaps, id, data?.tier || 0, telegramUser);
 
           if (rewards) setRewardStats(rewards);
           if (matrix) setMatrixData(matrix);
@@ -381,6 +405,25 @@ const App = () => {
       tg.backgroundColor = '#000000';
       if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
 
+      // Capture and store Telegram user identity
+      const tgUser = tg.initDataUnsafe?.user;
+      if (tgUser) {
+        setTelegramUser(tgUser);
+        setTelegramLinked(true);
+        // Persist for affiliate link generation
+        localStorage.setItem('tgUserId', String(tgUser.id));
+        localStorage.setItem('tgUsername', tgUser.username || tgUser.first_name || '');
+        console.log("Telegram User Captured:", tgUser.id, tgUser.username);
+      } else {
+        // Restore from localStorage if available (browser testing)
+        const cachedId = localStorage.getItem('tgUserId');
+        const cachedName = localStorage.getItem('tgUsername');
+        if (cachedId) {
+          setTelegramUser({ id: Number(cachedId), username: cachedName });
+          setTelegramLinked(true);
+        }
+      }
+
       // Capture Referral/Sponsor ID from Telegram start_param
       const startParam = tg.initDataUnsafe?.start_param;
       if (startParam) {
@@ -388,7 +431,6 @@ const App = () => {
         console.log("Captured Referral Sponsor:", startParam);
         
         // Record the Guest Click/Join on Backend
-        const tgUser = tg.initDataUnsafe?.user;
         fetch(`${BACKEND_URL}/referrals/click`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -417,6 +459,7 @@ const App = () => {
 
   useEffect(() => {
     if (userAddress) {
+      // Restore any saved off-chain progress from backend
       fetch(`${BACKEND_URL}/user/${userAddress}`)
         .then(res => res.json())
         .then(data => {
@@ -426,8 +469,19 @@ const App = () => {
           }
         })
         .catch(() => {});
+
+      // Immediately link Telegram identity to this wallet (if available)
+      const tgId = telegramUser?.id || Number(localStorage.getItem('tgUserId'));
+      const tgName = telegramUser?.username || telegramUser?.first_name || localStorage.getItem('tgUsername');
+      if (tgId) {
+        fetch(`${BACKEND_URL}/user/link-telegram`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ address: userAddress, telegram_id: tgId, username: tgName })
+        }).catch(() => {});
+      }
     }
-  }, [userAddress]);
+  }, [userAddress, telegramUser]);
 
   // Dynamic Scaling (Tied to On-chain Tier)
   const maxEnergy = 1000 + (nodeTier * 1000);
@@ -499,35 +553,7 @@ const App = () => {
     };
   }, [userAddress, nodeId, syncBlockchainData]);
 
-  // 1. Initialize Telegram & Auth Listener
-  useEffect(() => {
-    if (window.Telegram?.WebApp) {
-      const tg = window.Telegram.WebApp;
-      tg.ready();
-      tg.expand();
-      tg.headerColor = '#000000';
-      tg.backgroundColor = '#000000';
-      if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
-
-      // Capture Referral/Sponsor ID from Telegram start_param
-      const startParam = tg.initDataUnsafe?.start_param;
-      if (startParam) {
-        localStorage.setItem('pendingSponsor', startParam);
-        console.log("Captured Referral Sponsor:", startParam);
-        
-        // Record the Guest Click/Join on Backend
-        const tgUser = tg.initDataUnsafe?.user;
-        fetch(`${BACKEND_URL}/referrals/click`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            referrer_id: startParam,
-            guest_username: tgUser?.username || tgUser?.first_name || "Guest"
-          })
-        }).catch(err => console.error("Guest record failed:", err));
-      }
-    }
-  }, []);
+  // Duplicate Telegram init removed — handled in primary useEffect above
 
   // 6. Periodic Pool Sync (Global Dividends & Status Update)
   useEffect(() => {
@@ -948,8 +974,24 @@ const App = () => {
   const handleInvite = () => {
     if (nodeId === 0) return;
     const shareUrl = `https://t.me/AIPCoreBot?start=${nodeId}`;
-    const text = encodeURIComponent("🚀 Join my AIPCore Matrix and earn real BNB! Activate your node now.");
+    const text = encodeURIComponent(`🚀 Join my AIPCore Matrix and earn real BNB! My Node #${nodeId} (${tierInfo.name}) is live. Activate yours and start mining!`);
+    // Copy to clipboard as well for convenience
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(shareUrl).catch(() => {});
+    }
     window.open(`https://t.me/share/url?url=${encodeURIComponent(shareUrl)}&text=${text}`, '_blank');
+  };
+
+  const handleCopyAffiliateLink = () => {
+    if (nodeId === 0) return;
+    const link = `https://t.me/AIPCoreBot?start=${nodeId}`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(link)
+        .then(() => alert('✅ Affiliate link copied to clipboard!'))
+        .catch(() => alert('Link: ' + link));
+    } else {
+      alert('Link: ' + link);
+    }
   };
 
   const handleHardReset = () => {
@@ -1054,7 +1096,7 @@ const App = () => {
               <span className="text-white opacity-40">●</span>
               <span>{act.username || `User #${act.node_id}`}</span> 
               <span className="text-white opacity-40">Reached Tier</span> 
-              <span className="text-white">{act.tier}</span>
+              <span className="text-white">{getTierDetails(act.tier).name}</span>
               <span className="text-white opacity-40">with</span>
               <span className="text-white">{Math.floor(act.coins / 1000)}K</span>
               <span className="text-white opacity-40">Coins</span>
@@ -1076,9 +1118,13 @@ const App = () => {
                   <p className="text-[9px] font-black uppercase text-white/50 tracking-widest mb-0.5">18-Lvl Team</p>
                   <p className="text-[14px] font-black text-white">{onchainStats ? onchainStats.totalMatrixNodes : '0'}</p>
               </div>
-              <div className="text-center w-1/3">
+              <div className="text-center w-1/4 border-r border-white/10">
+                  <p className="text-[9px] font-black uppercase text-white/50 tracking-widest mb-0.5">Level</p>
+                  <p className="text-[12px] font-black" style={{ color: tierInfo.color }}>{tierInfo.name}</p>
+              </div>
+              <div className="text-center w-1/4">
                   <p className="text-[9px] font-black uppercase text-white/50 tracking-widest mb-0.5">Node ID</p>
-                  <p className="text-[14px] font-black text-white">{nodeId > 0 ? `#${nodeId}` : 'GUEST'}</p>
+                  <p className="text-[14px] font-black text-white">{nodeId > 0 ? `#${nodeId}` : 'NONE'}</p>
               </div>
           </div>
       </div>
@@ -1283,14 +1329,64 @@ const App = () => {
       <h2 className="text-3xl font-black mb-1 text-white">NETWORK TREE</h2>
       <p className="text-sm opacity-100 text-[#00ff88] mb-6 font-black uppercase tracking-widest">Reserved for node owners.</p>
         <div className="space-y-6">
-            <button 
-                onClick={handleInvite} 
-                disabled={nodeId === 0}
-                className={`w-full py-5 font-black rounded-3xl flex items-center justify-center space-x-3 shadow-xl transition-all ${nodeId === 0 ? 'bg-red-500/10 text-red-500 border border-red-500/20 opacity-50 cursor-not-allowed' : 'bg-white text-black active:scale-98 hover:bg-[#00ff88]'}`}
-            >
-                {nodeId === 0 ? <ShieldAlert size={24} /> : <Share2 size={24} />}
-                <span>{nodeId === 0 ? 'AFFILIATE LINK DISABLED (ACTIVATE NODE)' : 'INVITE VIA TELEGRAM'}</span>
-            </button>
+
+            {/* Telegram Account Status + Affiliate Link Panel */}
+            <div className={`glass-card p-5 rounded-3xl border transition-all ${
+              telegramLinked ? 'border-[#00ff88]/30 bg-[#00ff88]/5' : 'border-yellow-500/30 bg-yellow-500/5'
+            }`}>
+              <div className="flex justify-between items-center mb-4">
+                <div className="flex items-center space-x-3">
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                    telegramLinked ? 'bg-[#00ff88]/20' : 'bg-yellow-500/20'
+                  }`}>
+                    <Users size={16} className={telegramLinked ? 'text-[#00ff88]' : 'text-yellow-500'} />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest opacity-40">Telegram Account</p>
+                    {telegramLinked && telegramUser ? (
+                      <p className="text-sm font-black text-[#00ff88]">
+                        @{telegramUser.username || telegramUser.first_name} · ID {telegramUser.id}
+                      </p>
+                    ) : (
+                      <p className="text-xs font-black text-yellow-500">Open in Telegram to link</p>
+                    )}
+                  </div>
+                </div>
+                <div className={`w-2.5 h-2.5 rounded-full ${
+                  telegramLinked ? 'bg-[#00ff88] animate-pulse' : 'bg-yellow-500'
+                }`} />
+              </div>
+
+              {nodeId > 0 ? (
+                <div className="space-y-3">
+                  <div className="p-3 bg-black/30 rounded-2xl border border-white/5 flex items-center justify-between">
+                    <span className="text-[11px] font-mono text-white/60 truncate flex-1">t.me/AIPCoreBot?start={nodeId}</span>
+                    <button
+                      onClick={handleCopyAffiliateLink}
+                      className="ml-3 p-2 bg-[#00ff88]/20 rounded-xl transition-all active:scale-90"
+                    >
+                      <Copy size={14} className="text-[#00ff88]" />
+                    </button>
+                  </div>
+                  <button
+                    onClick={handleInvite}
+                    className="w-full py-4 bg-white text-black font-black rounded-2xl flex items-center justify-center space-x-3 active:scale-[0.98] transition-transform shadow-xl text-[13px]"
+                  >
+                    <Share2 size={18} />
+                    <span>SHARE AFFILIATE LINK</span>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setCurrentView('mine')}
+                  className="w-full py-4 bg-red-500/10 text-red-500 border border-red-500/20 font-black rounded-2xl flex items-center justify-center space-x-2 text-[12px] uppercase tracking-widest"
+                >
+                  <ShieldAlert size={16} />
+                  <span>Activate Node to Generate Link</span>
+                </button>
+              )}
+            </div>
+
             <div className="grid grid-cols-2 gap-4">
                 <div className="glass-card p-5 rounded-3xl border-white/20"><p className="text-[12px] opacity-100 font-black text-white uppercase mb-1">Directs</p><p className="text-4xl font-black text-[#00ff88]">{onchainStats?.directNodes || 0}</p></div>
                 <div className="glass-card p-5 rounded-3xl border-white/20"><p className="text-[12px] opacity-100 font-black text-white uppercase mb-1">Matrix</p><p className="text-4xl font-black text-[#00ff88]">{onchainStats?.totalMatrixNodes || 0}</p></div>

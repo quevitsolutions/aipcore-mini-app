@@ -28,52 +28,66 @@ app.use('/api/', limiter);
 
 // Database Connection
 const pool = new Pool({
-  user: process.env.DB_USER || 'aip_admin',
-  host: process.env.DB_HOST || 'localhost',
-  database: process.env.DB_NAME || 'aipcore_db',
+  user:     process.env.DB_USER     || 'aip_admin',
+  host:     process.env.DB_HOST     || 'db',
+  database: process.env.DB_NAME     || 'aipcore_db',
   password: process.env.DB_PASSWORD || 'aip_password_123',
-  port: process.env.DB_PORT || 5434,
+  port:     Number(process.env.DB_PORT) || 5432,
+  // Connection pool settings for production
+  max: 10,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 5000,
 });
 
-// Initialize Database Tables
-const initDB = async () => {
-    try {
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS users (
-                wallet_address TEXT PRIMARY KEY,
-                username TEXT,
-                telegram_id BIGINT,
-                node_id BIGINT UNIQUE,
-                aip_coins BIGINT DEFAULT 0,
-                total_taps BIGINT DEFAULT 0,
-                last_synced TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                node_tier BIGINT DEFAULT 0
-            );
+console.log(`[DB] Connecting to ${process.env.DB_HOST || 'db'}:${process.env.DB_PORT || 5432} as ${process.env.DB_USER || 'aip_admin'}`);
 
-            -- Auto-Migration: Ensure all columns exist for old tables
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_id BIGINT;
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS node_id BIGINT;
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS aip_coins BIGINT DEFAULT 0;
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS total_taps BIGINT DEFAULT 0;
-            ALTER TABLE users ADD COLUMN IF NOT EXISTS node_tier BIGINT DEFAULT 0;
+// Initialize Database Tables (with retry for Docker startup timing)
+const initDB = async (retries = 10, delay = 3000) => {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+        try {
+            await pool.query(`
+                CREATE TABLE IF NOT EXISTS users (
+                    wallet_address TEXT PRIMARY KEY,
+                    username TEXT,
+                    telegram_id BIGINT,
+                    node_id BIGINT UNIQUE,
+                    aip_coins BIGINT DEFAULT 0,
+                    total_taps BIGINT DEFAULT 0,
+                    last_synced TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    node_tier BIGINT DEFAULT 0
+                );
 
-            CREATE TABLE IF NOT EXISTS referrals (
-                id SERIAL PRIMARY KEY,
-                referrer_node_id BIGINT,
-                guest_username TEXT,
-                joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
+                -- Auto-Migration: Ensure all columns exist for old tables
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_id BIGINT;
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS node_id BIGINT;
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS aip_coins BIGINT DEFAULT 0;
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS total_taps BIGINT DEFAULT 0;
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS node_tier BIGINT DEFAULT 0;
 
-            CREATE TABLE IF NOT EXISTS tasks (
-                id SERIAL PRIMARY KEY,
-                title TEXT,
-                reward_coins BIGINT,
-                link TEXT
-            );
-        `);
-        console.log('Database tables and auto-migrations initialized.');
-    } catch (err) {
-        console.error('Error initializing database:', err);
+                CREATE TABLE IF NOT EXISTS referrals (
+                    id SERIAL PRIMARY KEY,
+                    referrer_node_id BIGINT,
+                    guest_username TEXT,
+                    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id SERIAL PRIMARY KEY,
+                    title TEXT,
+                    reward_coins BIGINT,
+                    link TEXT
+                );
+            `);
+            console.log('[DB] Tables and auto-migrations initialized successfully.');
+            return; // success
+        } catch (err) {
+            if (attempt < retries) {
+                console.warn(`[DB] Connection attempt ${attempt}/${retries} failed: ${err.message}. Retrying in ${delay/1000}s...`);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+                console.error('[DB] All connection attempts exhausted. Database initialization failed:', err.message);
+            }
+        }
     }
 };
 
@@ -96,19 +110,48 @@ app.get('/api/user/:address', async (req, res) => {
 
 app.post('/api/user/sync', async (req, res) => {
     const { address, username, telegram_id, node_id, coins, taps, node_tier } = req.body;
+    if (!address) return res.status(400).json({ error: 'Missing address' });
     try {
         const query = `
             INSERT INTO users (wallet_address, username, telegram_id, node_id, aip_coins, total_taps, node_tier, last_synced)
             VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
             ON CONFLICT (wallet_address) DO UPDATE 
             SET aip_coins = $5, total_taps = $6, node_tier = $7, last_synced = CURRENT_TIMESTAMP, 
-                telegram_id = EXCLUDED.telegram_id,
-                node_id = EXCLUDED.node_id,
-                username = EXCLUDED.username
+                telegram_id = COALESCE(NULLIF($3::BIGINT, NULL), users.telegram_id),
+                node_id = COALESCE(NULLIF($4::BIGINT, 0)::BIGINT, users.node_id),
+                username = COALESCE(NULLIF($2, ''), users.username)
             RETURNING *;
         `;
-        const result = await pool.query(query, [address, username, telegram_id, node_id, coins, taps, node_tier || 0]);
+        const result = await pool.query(query, [
+            address,
+            username || null,
+            telegram_id ? BigInt(telegram_id) : null,
+            node_id || null,
+            coins || 0,
+            taps || 0,
+            node_tier || 0
+        ]);
         res.json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Explicit Telegram Account Link (wallet -> telegram_id + username)
+app.post('/api/user/link-telegram', async (req, res) => {
+    const { address, telegram_id, username } = req.body;
+    if (!address || !telegram_id) return res.status(400).json({ error: 'Missing address or telegram_id' });
+    try {
+        const result = await pool.query(`
+            INSERT INTO users (wallet_address, telegram_id, username, last_synced)
+            VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+            ON CONFLICT (wallet_address) DO UPDATE
+            SET telegram_id = $2,
+                username = COALESCE(NULLIF($3, ''), users.username),
+                last_synced = CURRENT_TIMESTAMP
+            RETURNING wallet_address, telegram_id, username;
+        `, [address, BigInt(telegram_id), username || null]);
+        res.json({ success: true, user: result.rows[0] });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -210,25 +253,40 @@ app.get('/api/referrals/:nodeId', async (req, res) => {
     }
 });
 
+// Health Check Endpoint (for Docker/VPS)
+app.get('/api/health', (req, res) => {
+    res.json({ status: 'OK', uptime: process.uptime(), timestamp: new Date().toISOString() });
+});
+
 app.listen(port, () => {
-    console.log(`AIPCore Backend running on port ${port}`);
+    console.log(`[SERVER] AIPCore Backend running on port ${port}`);
 });
 
 // Initialize Telegram Bot Engine
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
+const PROD_URL = 'https://aipcore.online'; // Final production domain
+
 if (botToken) {
     const bot = new TelegramBot(botToken, { polling: true });
     
-    bot.onText(/\/start/, (msg) => {
+    bot.onText(/\/start(?:\s+(.+))?/, async (msg, match) => {
         const chatId = msg.chat.id;
+        const startParam = match && match[1]; // Captured from /start parameter
         
+        let welcomeMsg = 'Welcome to the *AIPCORE Ecosystem*! 🦾\n\nTap the button below to launch your Web3 Mini App Dashboard and start managing your nodes.';
+        
+        if (startParam) {
+            welcomeMsg = `Welcome to the *AIPCORE Ecosystem*! 🦾\n\n🚀 *Referral Detected*: You've been invited by Node #${startParam}.\n\nTap the button below to launch your Web3 Mini App Dashboard, activate your own node, and join the matrix!`;
+            console.log(`[BOT] New user via referral. Sponsor Node: ${startParam}`);
+        }
+
         const opts = {
             reply_markup: {
                 inline_keyboard: [
                     [
                         {
                             text: '🚀 Launch AIPCore Dashboard',
-                            web_app: { url: 'https://nfengine.online' }
+                            web_app: { url: PROD_URL }
                         }
                     ],
                     [
@@ -242,18 +300,19 @@ if (botToken) {
             parse_mode: 'Markdown'
         };
 
-        bot.sendMessage(
-            chatId, 
-            'Welcome to the *AIPCORE Ecosystem*! 🦾\n\nTap the button below to launch your Web3 Mini App Dashboard and start managing your nodes.', 
-            opts
-        );
+        bot.sendMessage(chatId, welcomeMsg, opts);
     });
 
     bot.on('polling_error', (error) => {
-        console.error('Polling Error:', error.message); 
+        // Only log critical errors to avoid console spam
+        if (!error.message.includes('EFATAL')) {
+            console.warn('[BOT] Polling Notification:', error.message);
+        } else {
+            console.error('[BOT] Critical Error:', error.message);
+        }
     });
 
-    console.log('Telegram Bot polling service initialized.');
+    console.log('[BOT] Telegram Bot polling service initialized.');
 } else {
-    console.warn('WARNING: No TELEGRAM_BOT_TOKEN found in .env, bot cannot start.');
+    console.warn('[BOT] WARNING: No TELEGRAM_BOT_TOKEN found in .env, bot cannot start.');
 }

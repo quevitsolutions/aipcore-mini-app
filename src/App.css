@@ -178,3 +178,39 @@
   background: #00ff88;
   border-radius: 4px;
 }
+
+/* Dynamic Character Animations */
+@keyframes anim-bounce {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(0.95) translateY(-5px); }
+}
+@keyframes anim-squash {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.05, 0.9) translateY(2px); }
+}
+@keyframes anim-tilt-left {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(-5deg) scale(0.95); }
+}
+@keyframes anim-tilt-right {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  50% { transform: rotate(5deg) scale(0.95); }
+}
+
+.char-anim-bounce { animation: anim-bounce 0.15s ease-in-out; }
+.char-anim-squash { animation: anim-squash 0.15s ease-in-out; }
+.char-anim-tilt-left { animation: anim-tilt-left 0.15s ease-in-out; }
+.char-anim-tilt-right { animation: anim-tilt-right 0.15s ease-in-out; }
+
+/* Speech Bubble Animation */
+@keyframes speech-fade-in {
+  0% { opacity: 0; transform: translateY(10px) scale(0.95); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes speech-fade-out {
+  0% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-5px) scale(0.9); }
+}
+.speech-bubble-in { animation: speech-fade-in 0.3s cubic-bezier(0.2, 0.8, 0.2, 1) forwards; }
+.speech-bubble-out { animation: speech-fade-out 0.3s ease-in forwards; }
+

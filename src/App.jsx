@@ -127,6 +127,11 @@ const App = () => {
     guests: [] 
   });
   const [incomeHistory, setIncomeHistory] = useState([]);
+  const [speechQueue, setSpeechQueue] = useState([]);
+  const [activeSpeech, setActiveSpeech] = useState(null);
+  const [charAnimClass, setCharAnimClass] = useState('');
+  const lastProcessedTimeRef = useRef(null);
+
   const [rewardPoolData, setRewardPoolData] = useState(null);
   const [globalPoolStats, setGlobalPoolStats] = useState(null);
   const [exploreView, setExploreView] = useState('overview'); // overview, explorer
@@ -354,6 +359,54 @@ const App = () => {
       syncUserToBackend(coinsRef.current, tapsRef.current, nodeId, nodeTier, telegramUser, onchainStats?.directNodes || 0);
     }
   }, [currentView, userAddress, nodeId, telegramUser, onchainStats]); // Trigger on view change
+
+  // 4. Character Companion "Brain" Watcher & Spooch Queue
+  useEffect(() => {
+    if (incomeHistory && incomeHistory.length > 0) {
+        const latestTime = incomeHistory[0].time;
+        
+        if (lastProcessedTimeRef.current === null) {
+            lastProcessedTimeRef.current = latestTime;
+            return;
+        }
+
+        if (latestTime > lastProcessedTimeRef.current) {
+            const newItems = incomeHistory.filter(item => item.time > lastProcessedTimeRef.current);
+            newItems.forEach(item => {
+               let message = '';
+               const types = ["NONE", "REFERRAL", "LAYER", "MATRIX", "DIRECT", "POOL", "MISSED"];
+               const typeName = types[item.rewardType] || 'REWARD';
+               const usdVal = (Number(item.amount) * Number(bnbPrice)).toFixed(2);
+               
+               if (item.rewardType === 4 && item.nodeId) { 
+                   message = `Hey! We locked in a direct warrior Node #${item.nodeId}! You earned ~$${usdVal} as DIRECT income.`;
+               } else if (item.rewardType === 2 || item.rewardType === 3) {
+                   message = `Awesome! A network node (Tier ${item.tier}) uplifted their tier! We just scraped ~$${usdVal} in ${typeName} returns.`;
+               } else if (item.rewardType === 5) {
+                   message = `Global dividend payout! ~$${usdVal} dropped into our wallets from the daily pool!`;
+               } else {
+                   message = `Ping: ~$${usdVal} received from a ${typeName} yield curve.`;
+               }
+
+               if (message) {
+                 setSpeechQueue(prev => [...prev, { id: Date.now() + Math.random(), text: message }]);
+               }
+            });
+            lastProcessedTimeRef.current = latestTime;
+        }
+    }
+  }, [incomeHistory, bnbPrice]);
+
+  // Handle Speech Queue
+  useEffect(() => {
+    if (speechQueue.length > 0 && !activeSpeech) {
+       const nextSpeech = speechQueue[0];
+       setActiveSpeech(nextSpeech);
+       setSpeechQueue(prev => prev.slice(1));
+       setTimeout(() => { setActiveSpeech(null); }, 4500);
+    }
+  }, [speechQueue, activeSpeech]);
+
 
   const fetchLeaderboard = async (force = false) => {
     // Only fetch once every 2 minutes unless forced
@@ -1100,6 +1153,13 @@ const App = () => {
     setTotalTaps(newTaps);
     setEnergy(prev => Math.max(0, prev - 1));
 
+    // Randomized Character CSS Animations
+    const animations = ['char-anim-bounce', 'char-anim-squash', 'char-anim-tilt-left', 'char-anim-tilt-right'];
+    const randomAnim = animations[Math.floor(Math.random() * animations.length)];
+    setCharAnimClass(randomAnim);
+    setTimeout(() => { setCharAnimClass(''); }, 150);
+
+
     // Floating text animation
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -1184,8 +1244,20 @@ const App = () => {
           className="click-card relative w-60 h-60 sm:w-72 sm:h-72 rounded-full flex items-center justify-center cursor-pointer overflow-hidden shadow-[0_0_60px_rgba(0,255,136,0.2)] bg-gradient-to-br from-[#00ff88]/10 to-transparent border-[4px] border-[#00ff88]/30 transition-all duration-300"
           onClick={handleTap}
         >
-          <img src={mainCharacter} alt="AIP Warrior" className="w-44 h-44 sm:w-56 sm:h-56 pointer-events-none transform active:scale-90 transition-transform" />
+          <img src={mainCharacter} alt="AIP Warrior" className={`w-44 h-44 sm:w-56 sm:h-56 pointer-events-none transform ${charAnimClass || 'active:scale-90 transition-transform'}`} />
           
+          {activeSpeech && (
+            <div className="absolute -top-12 sm:-top-8 left-1/2 transform -translate-x-1/2 w-56 z-40 speech-bubble-in pointer-events-none">
+              <div className="glass-card bg-black/80 backdrop-blur-3xl p-3.5 pt-2.5 rounded-3xl rounded-bl-sm border border-[#00ff88]/40 shadow-[0_10px_40px_rgba(0,255,136,0.3)]">
+                  <div className="text-[9px] font-black uppercase text-[#00ff88] mb-1.5 tracking-widest border-b border-white/10 pb-1 flex items-center justify-between">
+                      <span>Companion</span>
+                      <span className="animate-pulse w-1.5 h-1.5 bg-[#00ff88] rounded-full"></span>
+                  </div>
+                  <p className="text-[11px] font-bold text-white leading-tight">{activeSpeech.text}</p>
+              </div>
+            </div>
+          )}
+
           {clicks.map((click) => (
             <div
               key={click.id}

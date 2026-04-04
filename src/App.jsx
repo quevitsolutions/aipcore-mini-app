@@ -1220,8 +1220,51 @@ const App = () => {
     </div>
   );
 
-  const renderMine = () => (
-    <div className="p-4 pb-24 h-full overflow-y-auto">
+  const renderMine = () => {
+    const renderTierList = () => (
+      <div className="mt-8 mb-4">
+        <h3 className="text-sm font-black text-[#00ff88] uppercase tracking-widest">Network Tiers (0-17)</h3>
+        <p className="text-[10px] opacity-60 italic mb-4 text-white">Complete 18 levels of node upgrades to unlock maximum yield.</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+            {tierCosts.map((cost, idx) => {
+                const isUnlocked = nodeTier > idx;
+                const isNext = nodeTier === idx;
+                const isRegistration = idx === 0;
+
+                return (
+                    <div key={idx} className={`glass-card p-4 rounded-2xl flex justify-between items-center border ${isUnlocked ? 'bg-[#00ff88]/10 border-[#00ff88]/30' : isNext ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-white/5 border-white/10'}`}>
+                        <div>
+                            <span className={`text-[11px] font-black uppercase tracking-widest ${isUnlocked ? 'text-[#00ff88]' : isNext ? 'text-yellow-500' : 'text-white/60'}`}>
+                                {isRegistration ? 'TIER 0 (REG)' : `TIER ${idx}`}
+                            </span>
+                            <p className="text-[9px] opacity-60 uppercase mt-0.5 text-white">Unlocks Level {idx + 1}</p>
+                        </div>
+                        <div className="text-right flex flex-col items-end">
+                            <span className="text-[13px] font-black text-white">{Number(formatBNB(cost)).toFixed(3)} BNB</span>
+                            <span className="text-[8px] text-white/50 mb-1">(~${getTierUSDPrice(idx)})</span>
+                            {isUnlocked ? (
+                                <span className="text-[9px] font-black text-[#00ff88] mt-1 tracking-widest">✓ UNLOCKED</span>
+                            ) : isNext ? (
+                                <button 
+                                    onClick={isRegistration ? () => { triggerHaptic('medium'); handleCreateNode(); } : () => { triggerHaptic('medium'); handleUpgradeTier(); }}
+                                    disabled={isProcessing}
+                                    className="px-3 py-1 bg-yellow-500 text-black text-[9px] font-black rounded text-center mt-1 active:scale-95 transition-all shadow-[0_0_10px_rgba(234,179,8,0.3)]"
+                                >
+                                    {isProcessing ? 'WAIT...' : (isRegistration ? 'REGISTER' : 'UPGRADE')}
+                                </button>
+                            ) : (
+                                <span className="text-[9px] font-black text-white/40 mt-1 tracking-widest">LOCKED</span>
+                            )}
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+      </div>
+    );
+
+    return (
+      <div className="p-4 pb-24 h-full overflow-y-auto">
       <h2 className="text-3xl font-black mb-1 text-[#00ff88]">ON-CHAIN BOOST</h2>
       <p className="text-[13px] text-white opacity-100 mb-8 font-bold italic uppercase tracking-wider">Upgrade your node tier to maximize yield distributions.</p>
 
@@ -1232,7 +1275,8 @@ const App = () => {
               <button onClick={handleWalletConnect} className="w-full py-4 bg-[#00ff88] text-black font-black rounded-2xl active:scale-95 transition-transform text-lg shadow-[0_0_20px_rgba(0,255,136,0.2)]">CONNECT WALLET</button>
           </div>
       ) : nodeId === 0 ? (
-        <div className="glass-card p-8 rounded-[40px] text-center border-2 border-[#00ff88]/50 bg-gradient-to-br from-[#00ff88]/10 to-transparent shadow-[0_0_50px_rgba(0,255,136,0.15)] relative overflow-hidden">
+        <div className="space-y-6">
+          <div className="glass-card p-8 rounded-[40px] text-center border-2 border-[#00ff88]/50 bg-gradient-to-br from-[#00ff88]/10 to-transparent shadow-[0_0_50px_rgba(0,255,136,0.15)] relative overflow-hidden">
             <div className="absolute -top-10 -right-10 w-32 h-32 bg-[#00ff88] rounded-full mix-blend-overlay filter blur-3xl opacity-50 animate-pulse"></div>
             
             <div className="mx-auto w-24 h-24 bg-black/50 rounded-full flex items-center justify-center border-4 border-[#00ff88]/30 mb-6 relative">
@@ -1270,6 +1314,8 @@ const App = () => {
             </button>
             
             <p className="mt-5 text-[10px] opacity-40 font-black uppercase tracking-widest">Powered by Verified Smart Contract</p>
+          </div>
+          {renderTierList()}
         </div>
       ) : (
         <div className="space-y-6">
@@ -1310,6 +1356,7 @@ const App = () => {
                     )}
                 </button>
             </div>
+            {renderTierList()}
             <div className="mt-8 mb-4">
                 <h3 className="text-sm font-black text-[#00ff88] uppercase tracking-widest">Matrix Units</h3>
             </div>
@@ -1332,7 +1379,8 @@ const App = () => {
         </div>
       )}
     </div>
-  );
+    );
+  };
 
   const renderFriends = () => (
     <div className="p-4 pb-24 h-full overflow-y-auto">

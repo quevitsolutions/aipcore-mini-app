@@ -1223,21 +1223,22 @@ const App = () => {
   const renderMine = () => {
     const renderTierList = () => (
       <div className="mt-8 mb-4">
-        <h3 className="text-sm font-black text-[#00ff88] uppercase tracking-widest">Network Tiers (0-17)</h3>
+        <h3 className="text-sm font-black text-[#00ff88] uppercase tracking-widest">Network Tiers (1-18)</h3>
         <p className="text-[10px] opacity-60 italic mb-4 text-white">Complete 18 levels of node upgrades to unlock maximum yield.</p>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
             {tierCosts.map((cost, idx) => {
-                const isUnlocked = nodeTier > idx;
-                const isNext = nodeTier === idx;
+                const targetTier = idx + 1;
+                const isUnlocked = nodeTier >= targetTier;
+                const isNext = nodeTier === (targetTier - 1);
                 const isRegistration = idx === 0;
 
                 return (
                     <div key={idx} className={`glass-card p-4 rounded-2xl flex justify-between items-center border ${isUnlocked ? 'bg-[#00ff88]/10 border-[#00ff88]/30' : isNext ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-white/5 border-white/10'}`}>
                         <div>
                             <span className={`text-[11px] font-black uppercase tracking-widest ${isUnlocked ? 'text-[#00ff88]' : isNext ? 'text-yellow-500' : 'text-white/60'}`}>
-                                {isRegistration ? 'TIER 0 (REG)' : `TIER ${idx}`}
+                                {isRegistration ? 'TIER 1 (REG)' : `TIER ${targetTier}`}
                             </span>
-                            <p className="text-[9px] opacity-60 uppercase mt-0.5 text-white">Unlocks Level {idx + 1}</p>
+                            <p className="text-[9px] opacity-60 uppercase mt-0.5 text-white">Reward Layer {targetTier}</p>
                         </div>
                         <div className="text-right flex flex-col items-end">
                             <span className="text-[13px] font-black text-white">{Number(formatBNB(cost)).toFixed(3)} BNB</span>

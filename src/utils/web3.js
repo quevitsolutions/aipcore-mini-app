@@ -7,6 +7,7 @@ import abi from './abi.json';
 const PROJECT_ID = '85bbe92e974bca9f67c7910e0d1365ea';
 const CONTRACT_ADDRESS = '0xB6CbD70147835D4eA93B4a768D8e101B6E9A420f';
 const VIEW_CONTRACT_ADDRESS = '0x8d4FBcb77EAA5260F4C5f41713c6968A197E2BDb';
+const REWARD_POOL_ADDRESS = '0x319429aD1A00cbCD6aed1fFA1106eEC056316465';
 
 // SCALABLE RPC POOL (Client-Side Failover)
 const RPC_POOL = [
@@ -49,6 +50,7 @@ let currentRpcIndex = 0;
 let _cachedProvider = null;
 let _coreContract = null;
 let _viewContract = null;
+let _poolContract = null;
 
 export const getProvider = async () => {
     // If we have a wallet connected via modal
@@ -81,16 +83,36 @@ export const getViewContract = async () => {
     return _viewContract;
 };
 
+export const getPoolContract = async () => {
+    if (!_poolContract) {
+        const provider = await getProvider();
+        _poolContract = new ethers.Contract(REWARD_POOL_ADDRESS, abi, provider);
+    }
+    return _poolContract;
+};
+
 export const invalidateProviderCache = () => {
     _cachedProvider = null;
     _coreContract = null;
     _viewContract = null;
+    _poolContract = null;
 };
 
 
+// Levels in USD (fixed in contract logic)
+export const TIER_PRICE_USD = [
+  5, 5, 10, 20, 40, 80, 160, 320, 640, 
+  1280, 2560, 5120, 10240, 20480, 40960, 
+  81920, 163840, 327680
+];
+
+export const getTierUSDPrice = (index) => {
+  return TIER_PRICE_USD[index] || 0;
+};
+
 // Standard formatting helpers
 export const formatBNB = (wei) => {
-  return ethers.formatEther(wei || 0n);
+  return Number(ethers.formatEther(wei || 0n)).toFixed(5);
 };
 
 export const parseBNB = (amount) => {
@@ -139,14 +161,18 @@ export const getWalletBalance = async (address) => {
 export const getNodeData = async (nodeId) => {
   const contract = await getCoreContract();
   try {
-    const node = await contract.getNode(nodeId);
+    const [node, stats] = await Promise.all([
+      contract.getNode(nodeId),
+      contract.getNodeStats(nodeId).catch(() => null)
+    ]);
     return {
       wallet: node.wallet,
       nodeId: Number(node.nodeId),
       sponsor: Number(node.sponsor),
-      tier: Number(node.tier),
-      directNodes: Number(node.directNodes),
-      totalMatrixNodes: Number(node.totalMatrixNodes),
+      // Use stats if available for the most current tier/counts, otherwise fallback to struct
+      tier: stats ? Number(stats[0]) : Number(node.tier),
+      directNodes: stats ? Number(stats[1]) : Number(node.directNodes || 0),
+      totalMatrixNodes: stats ? Number(stats[2]) : Number(node.totalMatrixNodes || 0),
       joinedAt: Number(node.joinedAt),
       totalContribution: formatBNB(node.totalContribution),
     };
@@ -351,4 +377,78 @@ export const getContractOwner = async () => {
         console.error("Failed to fetch owner:", err);
         return null;
     }
+};
+
+// --- REWARD POOL HELPERS ---
+
+export const getPoolViewData = async (nodeId) => {
+    try {
+        const contract = await getPoolContract();
+        const data = await contract.getPoolViewHelper(nodeId);
+        return {
+            currentPoolId: Number(data[0]),
+            poolName: data[1],
+            claimable: data[2],
+            totalEarned: data[3],
+            totalClaimedAmount: data[4],
+            remainingCap: data[5],
+            lifetimeCap: data[6],
+            totalDeposited: data[7],
+            nfeTier: Number(data[8]),
+            isQualifiedForNext: data[9],
+            nextPoolId: Number(data[10]),
+            missingRequirements: data[11].map(v => Number(v))
+        };
+    } catch (error) {
+        console.error("Error fetching pool view data:", error);
+        return null;
+    }
+};
+
+export const getGlobalPoolStats = async () => {
+    try {
+        const contract = await getPoolContract();
+        const stats = await contract.getPoolStats();
+        return {
+            bronzeNodes: Number(stats[0]),
+            silverNodes: Number(stats[1]),
+            goldNodes: Number(stats[2]),
+            bronzeAccPerNode: stats[3],
+            silverAccPerNode: stats[4],
+            goldAccPerNode: stats[5],
+            totalReceived: stats[6],
+            totalDistributed: stats[7]
+        };
+    } catch (error) {
+        console.error("Error fetching global pool stats:", error);
+        return null;
+    }
+};
+
+export const claimPoolRewards = async (nodeId) => {
+    const contract = await getPoolContract();
+    const modal = getAppKitModal();
+    const bridge = modal.getWalletProvider();
+    if (!bridge.walletProvider) throw new Error("Wallet not connected");
+
+    const provider = new ethers.BrowserProvider(bridge.walletProvider);
+    const signer = await provider.getSigner();
+    const signedContract = contract.connect(signer);
+    
+    const tx = await signedContract.claim(nodeId);
+    return tx.wait();
+};
+
+export const registerPoolNode = async (nodeId) => {
+    const contract = await getPoolContract();
+    const modal = getAppKitModal();
+    const bridge = modal.getWalletProvider();
+    if (!bridge.walletProvider) throw new Error("Wallet not connected");
+
+    const provider = new ethers.BrowserProvider(bridge.walletProvider);
+    const signer = await provider.getSigner();
+    const signedContract = contract.connect(signer);
+    
+    const tx = await signedContract.registerNode(nodeId);
+    return tx.wait();
 };

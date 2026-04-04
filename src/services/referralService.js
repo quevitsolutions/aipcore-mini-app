@@ -7,7 +7,7 @@
  * 2. Implement real fetch() calls to your backend.
  */
 
-const BASE_URL = 'https://nfengine.online/api';
+const BASE_URL = import.meta.env.DEV ? 'http://localhost:5000/api' : 'https://nfengine.online/api';
 
 export const getOffchainReferralStats = async (nodeId) => {
     try {

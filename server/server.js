@@ -43,6 +43,7 @@ const initDB = async () => {
                 wallet_address TEXT PRIMARY KEY,
                 username TEXT,
                 telegram_id BIGINT,
+                node_id BIGINT UNIQUE,
                 aip_coins BIGINT DEFAULT 0,
                 total_taps BIGINT DEFAULT 0,
                 last_synced TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -52,7 +53,7 @@ const initDB = async () => {
 
             CREATE TABLE IF NOT EXISTS referrals (
                 id SERIAL PRIMARY KEY,
-                referrer_address TEXT REFERENCES users(wallet_address),
+                referrer_node_id BIGINT,
                 guest_username TEXT,
                 joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
@@ -87,19 +88,77 @@ app.get('/api/user/:address', async (req, res) => {
 });
 
 app.post('/api/user/sync', async (req, res) => {
-    const { address, username, telegram_id, coins, taps } = req.body;
+    const { address, username, telegram_id, node_id, coins, taps } = req.body;
     try {
         const query = `
-            INSERT INTO users (wallet_address, username, telegram_id, aip_coins, total_taps, last_synced)
-            VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+            INSERT INTO users (wallet_address, username, telegram_id, node_id, aip_coins, total_taps, last_synced)
+            VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
             ON CONFLICT (wallet_address) DO UPDATE 
-            SET aip_coins = $4, total_taps = $5, last_synced = CURRENT_TIMESTAMP, 
+            SET aip_coins = $5, total_taps = $6, last_synced = CURRENT_TIMESTAMP, 
                 telegram_id = EXCLUDED.telegram_id,
+                node_id = EXCLUDED.node_id,
                 username = EXCLUDED.username
             RETURNING *;
         `;
-        const result = await pool.query(query, [address, username, telegram_id, coins, taps]);
+        const result = await pool.query(query, [address, username, telegram_id, node_id, coins, taps]);
         res.json(result.rows[0]);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get user by Node ID
+app.get('/api/user/node/:nodeId', async (req, res) => {
+    try {
+        const { nodeId } = req.params;
+        const result = await pool.query('SELECT username, wallet_address FROM users WHERE node_id = $1', [nodeId]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Node not found in DB' });
+        }
+        const user = result.rows[0];
+        // Ensure @ prefix for display
+        if (user.username && !user.username.startsWith('@')) {
+            user.username = `@${user.username}`;
+        }
+        res.json(user);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Referral Tracking: Record a guest click/join
+app.post('/api/referrals/click', async (req, res) => {
+    const { referrer_id, guest_username } = req.body;
+    if (!referrer_id) return res.status(400).json({ error: 'Missing referrer_id' });
+    try {
+        await pool.query(
+            'INSERT INTO referrals (referrer_node_id, guest_username) VALUES ($1, $2)',
+            [referrer_id, guest_username || 'Guest']
+        );
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Get referral activity for a node
+app.get('/api/referrals/:nodeId', async (req, res) => {
+    try {
+        const { nodeId } = req.params;
+        const result = await pool.query(
+            'SELECT guest_username as username, joined_at as "joinedAt" FROM referrals WHERE referrer_node_id = $1 ORDER BY joined_at DESC LIMIT 50',
+            [nodeId]
+        );
+        const countRes = await pool.query('SELECT COUNT(*) FROM referrals WHERE referrer_node_id = $1', [nodeId]);
+        
+        res.json({
+            rawInvites: parseInt(countRes.rows[0].count) * 1.5, // Mocking "clicks" vs "joins"
+            offlineJoined: parseInt(countRes.rows[0].count),
+            guests: result.rows.map(r => ({
+                ...r,
+                joinedAt: new Date(r.joinedAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+            }))
+        });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

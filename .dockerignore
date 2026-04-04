@@ -1,0 +1,16 @@
+node_modules
+dist
+pg
+postgresql.zip
+server/node_modules
+.env
+.env.txt
+.git
+.gitignore
+docker-compose.yml
+Dockerfile
+nginx.conf
+vps_setup_instructions.md
+implementation_plan*.md
+task*.md
+walkthrough.md

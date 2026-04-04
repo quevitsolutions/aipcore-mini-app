@@ -1,4 +1,4 @@
-version: '3.9'
+# version: '3.9' (Obsolete in v2)
 
 services:
   db:
@@ -38,6 +38,19 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - aipcore_net
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aipcore_frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
     networks:
       - aipcore_net
 

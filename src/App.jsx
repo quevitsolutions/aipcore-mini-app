@@ -18,7 +18,8 @@ import {
   Loader2,
   ShieldCheck,
   Camera,
-  Zap
+  Zap,
+  Check
 } from 'lucide-react';
 import AipLogo from './icons/AipLogo';
 import { 
@@ -48,7 +49,12 @@ import {
   getTierCostsArray,
   getBNBPrice,
   getContractOwner,
-  getAppKitModal
+  getAppKitModal,
+  getTierUSDPrice,
+  getPoolViewData,
+  getGlobalPoolStats,
+  claimPoolRewards,
+  registerPoolNode
 } from './utils/web3';
 import { getOffchainReferralStats } from './services/referralService';
 
@@ -57,6 +63,9 @@ const BACKEND_URL = import.meta.env.DEV ? 'http://localhost:5000/api' : 'https:/
 const App = () => {
   // Navigation
   const [currentView, setCurrentView] = useState('home');
+  
+  // User Mapping Cache (Node ID -> Telegram Username)
+  const [userNames, setUserNames] = useState(new Map());
 
   // Off-chain Stats (Persistence)
   const [aipCoins, setAipCoins] = useState(() => Number(localStorage.getItem('aipCoins')) || 0);
@@ -84,6 +93,8 @@ const App = () => {
     guests: [] 
   });
   const [incomeHistory, setIncomeHistory] = useState([]);
+  const [rewardPoolData, setRewardPoolData] = useState(null);
+  const [globalPoolStats, setGlobalPoolStats] = useState(null);
   const [exploreView, setExploreView] = useState('overview'); // overview, explorer
   const [explorerType, setExplorerType] = useState('matrix'); // matrix, direct
   const [explorerLevel, setExplorerLevel] = useState(1);
@@ -144,10 +155,36 @@ const App = () => {
     ];
   });
 
+  // Helper: Display Username or Wallet
+  const UsernameDisplay = ({ nodeId: targetNodeId, wallet: targetWallet }) => {
+    const [name, setName] = useState(userNames.get(targetNodeId));
+
+    useEffect(() => {
+      if (name) return;
+      if (!targetNodeId || targetNodeId === 0) return;
+
+      fetch(`${BACKEND_URL}/user/node/${targetNodeId}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data && data.username) {
+            setUserNames(prev => new Map(prev).set(targetNodeId, data.username));
+            setName(data.username);
+          }
+        })
+        .catch(() => {
+          // No user found or offline - keep showing wallet
+        });
+    }, [targetNodeId, targetWallet, name]);
+
+    if (name) return <span className="text-[#00ff88] font-black">{name}</span>;
+    return <span className="font-mono text-white/60">{targetWallet.slice(0, 6)}...{targetWallet.slice(-4)}</span>;
+  };
+
   // --- CORE FUNCTIONS (Moved up to avoid TDZ errors) ---
   
   // 1. Sync User Off-chain Data to Backend
-  const syncUserToBackend = useCallback(async (coins, taps) => {
+  // 1. Sync User Off-chain Data to Backend
+  const syncUserToBackend = useCallback(async (coins, taps, node_id = null) => {
     if (!userAddress) return;
     try {
       const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
@@ -158,6 +195,7 @@ const App = () => {
           address: userAddress,
           username: tgUser?.username || "AIP_Warrior",
           telegram_id: tgUser?.id || null,
+          node_id: node_id,
           coins: Math.floor(coins),
           taps: taps
         })
@@ -187,38 +225,51 @@ const App = () => {
       setBnbPrice(bPrice);
       setIsAdmin(address.toLowerCase() === ownerAddr.toLowerCase());
 
-      if (id > 0) {
-        const [data, rewards, matrix, offchain, history] = await Promise.all([
-          getNodeData(id),
-          getRewardStats(id),
-          getMatrixLevelsData(id),
-          getOffchainReferralStats(id),
-          getIncomeHistory(id)
-        ]);
-        if (data) {
-          setNodeTier(data.tier);
-          setOnchainStats(data);
+        if (id > 0) {
+          // Immediately sync Node ID linkage to Backend
+          syncUserToBackend(aipCoins, totalTaps, id);
+
+          const [data, rewards, matrix, offchain, history, pData, gStats] = await Promise.all([
+            getNodeData(id),
+            getRewardStats(id),
+            getMatrixLevelsData(id),
+            getOffchainReferralStats(id),
+            getIncomeHistory(id),
+            getPoolViewData(id),
+            getGlobalPoolStats()
+          ]);
+          
+          if (data) {
+            setNodeTier(data.tier);
+            setOnchainStats(data);
+          }
+          if (rewards) {
+            setRewardStats(rewards);
+          }
+          if (matrix) {
+            setMatrixData(matrix);
+          }
+          if (offchain) {
+            setOffchainRefStats(offchain);
+          }
+          if (history) {
+            setIncomeHistory(history);
+          }
+          if (pData) {
+            setRewardPoolData(pData);
+          }
+          if (gStats) {
+            setGlobalPoolStats(gStats);
+          }
+        } else {
+          setNodeTier(0);
+          setOnchainStats(null);
+          setRewardStats(null);
+          setMatrixData([]);
+          setOffchainRefStats({ rawInvites: 0, offlineJoined: 0, guests: [] });
+          setIncomeHistory([]);
+          setRewardPoolData(null);
         }
-        if (rewards) {
-          setRewardStats(rewards);
-        }
-        if (matrix) {
-          setMatrixData(matrix);
-        }
-        if (offchain) {
-          setOffchainRefStats(offchain);
-        }
-        if (history) {
-          setIncomeHistory(history);
-        }
-      } else {
-        setNodeTier(0);
-        setOnchainStats(null);
-        setRewardStats(null);
-        setMatrixData([]);
-        setOffchainRefStats({ rawInvites: 0, offlineJoined: 0, guests: [] });
-        setIncomeHistory([]);
-      }
     } catch (err) {
       console.error("Sync error:", err);
     } finally {
@@ -237,6 +288,24 @@ const App = () => {
       tg.headerColor = '#000000';
       tg.backgroundColor = '#000000';
       if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+
+      // Capture Referral/Sponsor ID from Telegram start_param
+      const startParam = tg.initDataUnsafe?.start_param;
+      if (startParam) {
+        localStorage.setItem('pendingSponsor', startParam);
+        console.log("Captured Referral Sponsor:", startParam);
+        
+        // Record the Guest Click/Join on Backend
+        const tgUser = tg.initDataUnsafe?.user;
+        fetch(`${BACKEND_URL}/referrals/click`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            referrer_id: startParam,
+            guest_username: tgUser?.username || tgUser?.first_name || "Guest"
+          })
+        }).catch(err => console.error("Guest record failed:", err));
+      }
     }
 
     const modal = getAppKitModal();
@@ -299,7 +368,7 @@ const App = () => {
       setAipCoins(currentCoins => {
         setTotalTaps(currentTaps => {
           if (currentCoins !== lastSyncedRef.current.coins || currentTaps !== lastSyncedRef.current.taps) {
-            syncUserToBackend(currentCoins, currentTaps);
+            syncUserToBackend(currentCoins, currentTaps, nodeId);
             lastSyncedRef.current = { coins: currentCoins, taps: currentTaps };
           }
           return currentTaps;
@@ -311,49 +380,83 @@ const App = () => {
     return () => clearInterval(heartbeat);
   }, [userAddress, syncUserToBackend]);
 
-  // Listeners for Web3 Events & Referrals
+  // Handle Account & Chain Changes via AppKit
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const startParam = params.get('start');
-    if (startParam) {
-      localStorage.setItem('pendingSponsor', startParam);
-    }
-
-    if (window.ethereum) {
-      window.ethereum.on('accountsChanged', (accounts) => {
-        if (accounts.length > 0) {
-          setUserAddress(accounts[0]);
-          syncBlockchainData(accounts[0]);
-        } else {
-          setUserAddress(null);
-          setNodeId(0);
+    const modal = getAppKitModal();
+    const unsubscribe = modal.subscribeAccount(state => {
+      if (state.isConnected && state.address) {
+        if (state.address !== userAddress) {
+          setUserAddress(state.address);
+          syncBlockchainData(state.address);
         }
-      });
+      } else if (!state.isConnected && (userAddress || nodeId !== 0)) {
+        handleWalletDisconnect();
+      }
+    });
 
-      window.ethereum.on('chainChanged', (chainId) => {
-        setIsWrongNetwork(chainId !== '0x38' && chainId !== '56' && chainId !== 56);
-        window.location.reload();
-      });
+    const unsubscribeNetwork = modal.subscribeNetwork(state => {
+       const chainId = state.caipNetworkId;
+       const isBsc = chainId === 'eip155:56';
+       setIsWrongNetwork(!isBsc);
+    });
 
-      window.ethereum.request({ method: 'eth_accounts' }).then(accounts => {
-        if (accounts.length > 0) {
-          setUserAddress(accounts[0]);
-          syncBlockchainData(accounts[0]);
-        }
-      });
+    return () => {
+      unsubscribe();
+      unsubscribeNetwork();
+    };
+  }, [userAddress, nodeId, syncBlockchainData]);
 
-      window.ethereum.request({ method: 'eth_chainId' }).then(chainId => {
-        setIsWrongNetwork(chainId !== '0x38' && chainId !== '56' && chainId !== 56);
-      });
+  // 1. Initialize Telegram & Auth Listener
+  useEffect(() => {
+    if (window.Telegram?.WebApp) {
+      const tg = window.Telegram.WebApp;
+      tg.ready();
+      tg.expand();
+      tg.headerColor = '#000000';
+      tg.backgroundColor = '#000000';
+      if (tg.HapticFeedback) tg.HapticFeedback.impactOccurred('medium');
+
+      // Capture Referral/Sponsor ID from Telegram start_param
+      const startParam = tg.initDataUnsafe?.start_param;
+      if (startParam) {
+        localStorage.setItem('pendingSponsor', startParam);
+        console.log("Captured Referral Sponsor:", startParam);
+        
+        // Record the Guest Click/Join on Backend
+        const tgUser = tg.initDataUnsafe?.user;
+        fetch(`${BACKEND_URL}/referrals/click`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            referrer_id: startParam,
+            guest_username: tgUser?.username || tgUser?.first_name || "Guest"
+          })
+        }).catch(err => console.error("Guest record failed:", err));
+      }
     }
-  }, [syncBlockchainData]);
+  }, []);
+
+  // 6. Periodic Pool Sync (Global Dividends & Status Update)
+  useEffect(() => {
+    if (!nodeId || nodeId === 0) return;
+    const poolSync = setInterval(async () => {
+      try {
+        const [pData, gStats] = await Promise.all([
+          getPoolViewData(nodeId),
+          getGlobalPoolStats()
+        ]);
+        if (pData) setRewardPoolData(pData);
+        if (gStats) setGlobalPoolStats(gStats);
+      } catch (e) {
+        console.warn("Background pool sync failed:", e);
+      }
+    }, 60000);
+    return () => clearInterval(poolSync);
+  }, [nodeId]);
 
   const handleWalletConnect = async () => {
-    const address = await connectWallet();
-    if (address) {
-      setUserAddress(address);
-      syncBlockchainData(address);
-    }
+    const modal = getAppKitModal();
+    await modal.open();
   };
 
   const fetchExplorerData = async (type, level) => {
@@ -382,13 +485,56 @@ const App = () => {
     }
   }, [exploreView, explorerType, explorerLevel, nodeId]);
 
-  const handleWalletDisconnect = () => {
+  const handleWalletDisconnect = async () => {
+    const modal = getAppKitModal();
+    await modal.disconnect();
     setUserAddress(null);
     setBnbBalance("0.0000");
     setNodeId(0);
     setNodeTier(0);
     setOnchainStats(null);
     setRewardStats(null);
+    setMatrixData([]);
+    setExplorerData([]);
+    if (window.Telegram?.WebApp) window.Telegram.WebApp.HapticFeedback.impactOccurred('medium');
+  };
+
+  const handlePoolRegister = async () => {
+    if (!nodeId) return;
+    setIsProcessing(true);
+    try {
+      await registerPoolNode(nodeId);
+      await syncBlockchainData(userAddress);
+      if (window.Telegram?.WebApp?.HapticFeedback) {
+        window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+      }
+    } catch (err) {
+      console.error("Pool registration failed:", err);
+      if (window.Telegram?.WebApp?.HapticFeedback) {
+        window.Telegram.WebApp.HapticFeedback.notificationOccurred('error');
+      }
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handlePoolClaim = async () => {
+    if (!nodeId) return;
+    setIsProcessing(true);
+    try {
+      await claimPoolRewards(nodeId);
+      await syncBlockchainData(userAddress);
+      if (window.Telegram?.WebApp?.HapticFeedback) {
+        window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+      }
+    } catch (err) {
+      console.error("Pool claim failed:", err);
+      if (window.Telegram?.WebApp?.HapticFeedback) {
+        window.Telegram.WebApp.HapticFeedback.notificationOccurred('error');
+      }
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleCreateNode = async () => {
@@ -453,18 +599,6 @@ const App = () => {
         window.Telegram.WebApp.HapticFeedback.impactOccurred('medium');
       }
     }
-  };
-
-  const handleTap = (e) => {
-    if (energy <= 0) return;
-    if (window.Telegram?.WebApp) {
-      window.Telegram.WebApp.HapticFeedback.impactOccurred('light');
-    }
-    const newCoins = aipCoins + tapValue;
-    const newTaps = totalTaps + 1;
-    setAipCoins(newCoins);
-    setTotalTaps(newTaps);
-    setEnergy(prev => Math.max(0, prev - 1));
   };
 
   const handleInvite = () => {
@@ -605,38 +739,122 @@ const App = () => {
     </div>
   );
 
+  const [clicks, setClicks] = useState([]);
+  const handleTap = (e) => {
+    if (energy <= 0) return;
+    if (window.Telegram?.WebApp) {
+      window.Telegram.WebApp.HapticFeedback.impactOccurred('light');
+    }
+    const newCoins = aipCoins + tapValue;
+    const newTaps = totalTaps + 1;
+    setAipCoins(newCoins);
+    setTotalTaps(newTaps);
+    setEnergy(prev => Math.max(0, prev - 1));
+
+    // Floating text animation
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const id = Date.now();
+    setClicks(prev => [...prev, { id, x, y }]);
+    setTimeout(() => {
+        setClicks(prev => prev.filter(click => click.id !== id));
+    }, 1000);
+  };
+
   const renderHome = () => (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="px-6 pt-2 flex justify-between items-center z-20">
-          <button onClick={() => setCurrentView('earn')} className="glass-card p-4 rounded-2xl flex flex-col items-center justify-center space-y-1 active:scale-95 transition-transform w-[48%]">
-              <Gift size={20} className="text-[#00ff88]" />
-              <span className="text-[12px] font-black uppercase tracking-widest text-white">Daily Reward</span>
-          </button>
-          <button onClick={() => setCurrentView('mine')} className="glass-card p-4 rounded-2xl flex flex-col items-center justify-center space-y-1 active:scale-95 transition-transform w-[48%]">
-              <TrendingUp size={20} className="text-[#00ff88]" />
-              <span className="text-[12px] font-black uppercase tracking-widest text-white">Boost Tier</span>
-          </button>
+    <div className="flex flex-col h-full overflow-hidden relative">
+      {/* 1. Dashboard HUD (Top) */}
+      <div className="px-5 pt-3 z-20">
+          <div className="glass-card p-3 rounded-2xl flex justify-between items-center border border-white/10 bg-white/[0.03]">
+              <div className="text-center w-1/3 border-r border-white/10">
+                  <p className="text-[9px] font-black uppercase text-[#00ff88]/60 tracking-widest mb-0.5">Earned (BNB)</p>
+                  <p className="text-[14px] font-black text-[#00ff88]">{rewardStats ? rewardStats.total : '0.0000'}</p>
+              </div>
+              <div className="text-center w-1/3 border-r border-white/10">
+                  <p className="text-[9px] font-black uppercase text-white/50 tracking-widest mb-0.5">18-Lvl Team</p>
+                  <p className="text-[14px] font-black text-white">{onchainStats ? onchainStats.totalMatrixNodes : '0'}</p>
+              </div>
+              <div className="text-center w-1/3">
+                  <p className="text-[9px] font-black uppercase text-white/50 tracking-widest mb-0.5">Node ID</p>
+                  <p className="text-[14px] font-black text-white">{nodeId > 0 ? `#${nodeId}` : 'GUEST'}</p>
+              </div>
+          </div>
       </div>
 
-      <div className="flex-grow flex flex-col items-center justify-center relative select-none">
+      {/* 2. Massive Coin Balance (Top Center) */}
+      <div className="mt-6 flex flex-col items-center justify-center z-20">
+          <div className="flex items-center space-x-3 mb-2">
+              <img src={dollarCoin} alt="AIP" className="w-10 h-10 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]" />
+              <span className="text-5xl font-black text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]">{aipCoins.toLocaleString()}</span>
+          </div>
+          <div className="flex items-center space-x-2 px-3 py-1 bg-white/10 rounded-full">
+              <span className="text-[10px] font-black text-[#00ff88] uppercase tracking-widest flex items-center"><Pickaxe size={12} className="mr-1"/> +{tapValue} per tap</span>
+          </div>
+      </div>
+
+      {/* 3. The Hook / Tap Character (Center) */}
+      <div className="flex-grow flex flex-col items-center justify-center relative select-none z-10 mt-2">
         <div 
-          className="click-card relative w-64 h-64 rounded-full flex items-center justify-center cursor-pointer overflow-hidden z-10"
+          className="click-card relative w-64 h-64 rounded-full flex items-center justify-center cursor-pointer overflow-hidden shadow-[0_0_50px_rgba(0,255,136,0.15)] bg-gradient-to-br from-[#00ff88]/5 to-transparent border-4 border-[#00ff88]/20"
           onClick={handleTap}
         >
-          <img src={mainCharacter} alt="AIP Warrior" className="w-48 h-48 pointer-events-none" />
-        </div>
-        <div className="mt-8 flex items-center space-x-3">
-          <img src={dollarCoin} alt="AIP" className="w-12 h-12 drop-shadow-[0_0_15px_rgba(255,255,255,0.2)]" />
-          <span className="text-5xl font-black text-white drop-shadow-[0_0_20px_rgba(255,255,255,0.3)]">{aipCoins.toLocaleString()}</span>
+          <img src={mainCharacter} alt="AIP Warrior" className="w-48 h-48 pointer-events-none transform active:scale-95 transition-transform" />
+          
+          {clicks.map((click) => (
+            <div
+              key={click.id}
+              className="absolute text-5xl font-black text-white pointer-events-none fade-out-up z-50 drop-shadow-[0_4px_4px_rgba(0,0,0,0.5)]"
+              style={{ left: click.x, top: click.y, transform: `translate(-50%, -50%)` }}
+            >
+              +{tapValue}
+            </div>
+          ))}
         </div>
       </div>
-      <div className="px-6 pb-24">
+
+      <style dangerouslySetInnerHTML={{__html: `
+        @keyframes fadeOutUp {
+          0% { opacity: 1; transform: translate(-50%, -50%) translateY(0) scale(1); }
+          100% { opacity: 0; transform: translate(-50%, -50%) translateY(-100px) scale(1.5); }
+        }
+        .fade-out-up {
+          animation: fadeOutUp 1s ease-out forwards;
+        }
+      `}} />
+
+      {/* 4. Telegram Flow / Strong CTAs (Lower Third) */}
+      <div className="px-6 flex flex-col space-y-3 z-20 mb-6">
+        {nodeId === 0 ? (
+            <button 
+                onClick={() => setCurrentView('mine')} 
+                className="w-full py-4 text-center rounded-2xl font-black text-[13px] tracking-wide relative overflow-hidden group shadow-[0_0_20px_rgba(0,255,136,0.3)] bg-gradient-to-r from-[#00ff88] to-[#00ccff] text-black active:scale-[0.98] transition-transform"
+            >
+                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform"/>
+                <span className="flex items-center justify-center space-x-2">
+                    <TrendingUp size={18} />
+                    <span>🚀 ACTIVATE NODE (UNLOCK INCOME)</span>
+                </span>
+            </button>
+        ) : (
+            <button 
+                onClick={handleInvite} 
+                className="w-full py-4 text-center rounded-2xl font-black text-[13px] tracking-wide border border-[#00ff88]/40 bg-[#00ff88]/10 text-[#00ff88] flex items-center justify-center space-x-2 active:scale-[0.98] transition-transform backdrop-blur-md"
+            >
+                <Share2 size={18} />
+                <span>INVITE FRIENDS & EARN</span>
+            </button>
+        )}
+      </div>
+
+      {/* 5. Energy Bar (Absolute Bottom) */}
+      <div className="px-6 pb-24 z-20">
         <div className="flex justify-between items-end mb-2">
           <div className="flex items-center space-x-2">
             <Flame className="w-6 h-6 text-orange-500 fill-orange-500" />
-            <span className="text-lg font-black text-white">{energy} / {maxEnergy}</span>
+            <span className="text-lg font-black text-white">{energy} <span className="text-sm opacity-50">/ {maxEnergy}</span></span>
           </div>
-          <span className="text-[12px] font-black text-[#00ff88] uppercase tracking-widest">Power: 1 + {nodeTier * 2}</span>
+          <span className="text-[12px] font-black text-[#00ff88] uppercase tracking-widest flex items-center space-x-1"><SettingsIcon size={12}/> <span>Lvl {nodeTier}</span></span>
         </div>
         <div className="w-full h-3 bg-white/10 rounded-full overflow-hidden border border-white/5">
           <div className="progress-gradient h-full transition-all duration-300" style={{ width: `${(energy / maxEnergy) * 100}%` }}/>
@@ -657,17 +875,44 @@ const App = () => {
               <button onClick={handleWalletConnect} className="w-full py-4 bg-[#00ff88] text-black font-black rounded-2xl active:scale-95 transition-transform text-lg shadow-[0_0_20px_rgba(0,255,136,0.2)]">CONNECT WALLET</button>
           </div>
       ) : nodeId === 0 ? (
-        <div className="glass-card p-8 rounded-3xl text-center border-2 border-[#00ff88]/30 bg-[#00ff88]/[0.02]">
-            <TrendingUp className="w-16 h-16 mx-auto mb-6 text-[#00ff88] animate-pulse" />
-            <h3 className="text-2xl font-black mb-2 uppercase">Activate L1 Node</h3>
-            <p className="text-sm opacity-70 mb-8">Launch your first node to gain **+1,000 Energy** and start earning real BNB distribution.</p>
+        <div className="glass-card p-8 rounded-[40px] text-center border-2 border-[#00ff88]/50 bg-gradient-to-br from-[#00ff88]/10 to-transparent shadow-[0_0_50px_rgba(0,255,136,0.15)] relative overflow-hidden">
+            <div className="absolute -top-10 -right-10 w-32 h-32 bg-[#00ff88] rounded-full mix-blend-overlay filter blur-3xl opacity-50 animate-pulse"></div>
+            
+            <div className="mx-auto w-24 h-24 bg-black/50 rounded-full flex items-center justify-center border-4 border-[#00ff88]/30 mb-6 relative">
+              <div className="absolute inset-0 rounded-full border-2 border-[#00ff88] border-dashed animate-[spin_10s_linear_infinite]"></div>
+              <Wallet className="w-10 h-10 text-[#00ff88]" />
+            </div>
+
+            <div className="inline-block px-4 py-1.5 bg-red-500/20 border border-red-500/50 rounded-full mb-4 shadow-[0_0_15px_rgba(239,68,68,0.4)]">
+              <span className="text-[10px] font-black text-red-500 tracking-widest uppercase flex items-center space-x-2"><ShieldAlert size={12} /><span>EARNINGS LOCKED</span></span>
+            </div>
+            
+            <h3 className="text-3xl font-black mb-3 text-white uppercase drop-shadow-md tracking-tighter">Unlock BNB Yield</h3>
+            
+            <div className="space-y-3 mb-8 text-left mt-6 bg-black/40 p-5 rounded-3xl border border-white/5 backdrop-blur-sm">
+                <div className="flex items-center space-x-3 text-sm">
+                   <div className="w-6 h-6 bg-[#00ff88]/20 rounded-full flex items-center justify-center flex-shrink-0"><Check size={12} className="text-[#00ff88]"/></div>
+                   <span className="font-bold opacity-90 text-[13px]">Build an 18-Level Network</span>
+                </div>
+                <div className="flex items-center space-x-3 text-sm">
+                   <div className="w-6 h-6 bg-[#00ff88]/20 rounded-full flex items-center justify-center flex-shrink-0"><Check size={12} className="text-[#00ff88]"/></div>
+                   <span className="font-bold opacity-90 text-[13px]">Earn Real BNB Automatically</span>
+                </div>
+                <div className="flex items-center space-x-3 text-sm">
+                   <div className="w-6 h-6 bg-[#00ff88]/20 rounded-full flex items-center justify-center flex-shrink-0"><Check size={12} className="text-[#00ff88]"/></div>
+                   <span className="font-bold opacity-90 text-[13px]">Unlock Referral Match Rewards</span>
+                </div>
+            </div>
+
             <button 
                 onClick={handleCreateNode}
                 disabled={isProcessing}
-                className="w-full py-5 bg-[#00ff88] text-black font-black text-lg rounded-2xl flex items-center justify-center space-x-3 active:scale-95 disabled:opacity-50"
+                className="w-full py-5 bg-gradient-to-r from-[#00ff88] to-[#00ccff] text-black font-black text-[15px] tracking-wide rounded-2xl flex items-center justify-center space-x-3 active:scale-95 disabled:opacity-50 shadow-[0_0_20px_rgba(0,255,136,0.4)] transition-all"
             >
-                {isProcessing ? <Loader2 className="animate-spin" /> : <><span>INITIAL BOOST ($5)</span><ArrowUpRight className="w-6 h-6" /></>}
+                {isProcessing ? <Loader2 className="animate-spin" /> : <><span>🚀 ACTIVATE NODE NOW ($5)</span></>}
             </button>
+            
+            <p className="mt-5 text-[10px] opacity-40 font-black uppercase tracking-widest">Powered by Verified Smart Contract</p>
         </div>
       ) : (
         <div className="space-y-6">
@@ -684,16 +929,24 @@ const App = () => {
                 <button 
                     onClick={handleUpgradeTier}
                     disabled={isProcessing || nodeTier >= 18}
-                    className="w-full py-4 bg-[#00ff88] text-black font-black text-md rounded-2xl active:scale-95 disabled:opacity-50 shadow-[0_10px_20px_rgba(0,255,136,0.1)] flex flex-col items-center justify-center"
+                    className="w-full py-4 bg-[#00ff88] text-black font-black text-md rounded-2xl active:scale-95 disabled:opacity-50 shadow-[0_10px_20px_rgba(0,255,136,0.1)] flex flex-col items-center justify-center relative overflow-hidden"
                 >
                     {isProcessing ? (
                         <Loader2 className="animate-spin mx-auto" />
                     ) : (
                         <>
-                            <span className="text-sm font-black text-white px-2 py-1 mb-1 bg-black/20 rounded-lg uppercase tracking-widest">ACTIVATE TIER {nodeTier + 1}</span>
-                            {tierCosts[nodeTier] && (
-                                <span className="text-[12px] font-black opacity-100 text-black/70">NETWORK FEE: {Number(formatBNB(tierCosts[nodeTier])).toFixed(4)} BNB</span>
-                            )}
+                            <div className="absolute top-0 right-0 p-1">
+                                <Zap className="w-10 h-10 text-white/10" />
+                            </div>
+                            <span className="text-xs font-black text-white px-2 py-0.5 mb-1 bg-black/40 rounded-lg uppercase tracking-[0.2em]">ACTIVATE LEVEL {nodeTier + 1}</span>
+                            <div className="flex flex-col items-center">
+                                {tierCosts[nodeTier] && (
+                                    <span className="text-sm font-black text-black">
+                                       ${getTierUSDPrice(nodeTier)} USD <span className="opacity-40 font-bold mx-1">/</span> {Number(formatBNB(tierCosts[nodeTier])).toFixed(4)} <span className="text-[10px]">BNB</span>
+                                    </span>
+                                )}
+                                <span className="text-[9px] font-black opacity-40 uppercase tracking-tighter mt-1 italic">Unlocks Reward Layer {nodeTier + 1}</span>
+                            </div>
                         </>
                     )}
                 </button>
@@ -726,19 +979,20 @@ const App = () => {
     <div className="p-4 pb-24 h-full overflow-y-auto">
       <h2 className="text-3xl font-black mb-1 text-white">NETWORK TREE</h2>
       <p className="text-sm opacity-100 text-[#00ff88] mb-6 font-black uppercase tracking-widest">Reserved for node owners.</p>
-      {nodeId === 0 ? (
-        <div className="glass-card p-10 rounded-3xl text-center border-dashed border-2 border-white/5 bg-transparent">
-            <Users className="w-12 h-12 mx-auto mb-4 opacity-10" />
-            <p className="text-sm opacity-30 font-bold uppercase tracking-widest italic">Node activation required</p>
-        </div>
-      ) : (
         <div className="space-y-6">
-            <button onClick={handleInvite} className="w-full py-5 bg-white text-black font-black rounded-3xl flex items-center justify-center space-x-3 shadow-xl active:scale-98 transition-all hover:bg-[#00ff88]"><Share2 size={24} /><span>INVITE VIA TELEGRAM</span></button>
+            <button 
+                onClick={handleInvite} 
+                disabled={nodeId === 0}
+                className={`w-full py-5 font-black rounded-3xl flex items-center justify-center space-x-3 shadow-xl transition-all ${nodeId === 0 ? 'bg-red-500/10 text-red-500 border border-red-500/20 opacity-50 cursor-not-allowed' : 'bg-white text-black active:scale-98 hover:bg-[#00ff88]'}`}
+            >
+                {nodeId === 0 ? <ShieldAlert size={24} /> : <Share2 size={24} />}
+                <span>{nodeId === 0 ? 'AFFILIATE LINK DISABLED (ACTIVATE NODE)' : 'INVITE VIA TELEGRAM'}</span>
+            </button>
             <div className="grid grid-cols-2 gap-4">
                 <div className="glass-card p-5 rounded-3xl border-white/20"><p className="text-[12px] opacity-100 font-black text-white uppercase mb-1">Directs</p><p className="text-4xl font-black text-[#00ff88]">{onchainStats?.directNodes || 0}</p></div>
                 <div className="glass-card p-5 rounded-3xl border-white/20"><p className="text-[12px] opacity-100 font-black text-white uppercase mb-1">Matrix</p><p className="text-4xl font-black text-[#00ff88]">{onchainStats?.totalMatrixNodes || 0}</p></div>
-                <div className="glass-card p-5 rounded-3xl border-dashed border-white/40"><p className="text-[12px] opacity-100 font-black text-white uppercase mb-1">Total Invites</p><div className="flex items-baseline space-x-2"><p className="text-4xl font-black text-[#00ff88]">{offchainRefStats.rawInvites}</p><span className="text-[10px] font-black text-orange-500 italic uppercase">Clicks</span></div></div>
-                <div className="glass-card p-5 rounded-3xl border-dashed border-white/40"><p className="text-[12px] opacity-100 font-black text-white uppercase mb-1">Guest Joins</p><div className="flex items-baseline space-x-2"><p className="text-4xl font-black text-[#00ff88]">{offchainRefStats.offlineJoined}</p><span className="text-[10px] font-black text-blue-400 italic uppercase">Users</span></div></div>
+                <div className="glass-card p-5 rounded-3xl border-dashed border-white/40"><p className="text-[12px] opacity-100 font-black text-white uppercase mb-1">Total Invites</p><div className="flex items-baseline space-x-2"><p className="text-4xl font-black text-[#00ff88]">{offchainRefStats.rawInvites || 0}</p><span className="text-[10px] font-black text-orange-500 italic uppercase">Clicks</span></div></div>
+                <div className="glass-card p-5 rounded-3xl border-dashed border-white/40"><p className="text-[12px] opacity-100 font-black text-white uppercase mb-1">Guest Joins</p><div className="flex items-baseline space-x-2"><p className="text-4xl font-black text-[#00ff88]">{offchainRefStats.offlineJoined || 0}</p><span className="text-[10px] font-black text-blue-400 italic uppercase">Users</span></div></div>
             </div>
             <div className="flex bg-white/5 p-1 rounded-2xl">
                 <button onClick={() => setExploreView('overview')} className={`flex-1 py-3 rounded-xl text-[10px] font-black tracking-widest transition-all ${exploreView === 'overview' ? 'bg-[#00ff88] text-black shadow-lg shadow-[#00ff88]/20' : 'opacity-40'}`}>TEAM STATS</button>
@@ -777,16 +1031,276 @@ const App = () => {
                         const isDirect = node.sponsor === nodeId;
                         const isSpillover = node.sponsor < nodeId;
                         return (
-                            <div key={node.nodeId} className="glass-card p-4 rounded-3xl border border-white/5 bg-white/[0.01] flex justify-between items-center relative overflow-hidden group"><div className={`absolute top-0 left-0 w-1 h-full opacity-40 ${isDirect ? 'bg-[#00ff88]' : isSpillover ? 'bg-purple-500' : 'bg-blue-400'}`} /><div className="flex items-center space-x-4"><div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white/40 font-black text-xs">ID {node.nodeId}</div><div><div className="flex items-center space-x-2"><p className="text-xs font-black font-mono tracking-tight">{node.wallet.slice(0, 8)}...{node.wallet.slice(-8)}</p>{explorerType === 'matrix' && <span className={`text-[7px] px-1.5 py-0.5 rounded-sm font-black uppercase tracking-tighter ${isDirect ? 'bg-[#00ff88] text-black' : isSpillover ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-400/20 text-blue-400'}`}>{isDirect ? 'Direct' : isSpillover ? 'Spillover' : 'Team'}</span>}</div><div className="flex items-center space-x-2 mt-1"><span className="text-[9px] px-2 py-0.5 rounded bg-white/5 text-white/40 font-black">SPONSOR {node.sponsor}</span><span className="text-[9px] px-2 py-0.5 rounded bg-[#00ff88]/20 text-[#00ff88] font-black">TIER {node.tier}</span></div></div></div><a href={`https://bscscan.com/address/${node.wallet}`} target="_blank" rel="noreferrer" className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center group-hover:bg-[#00ff88]/20 transition-colors"><ArrowUpRight size={14} className="opacity-40" /></a></div>
+                            <div key={node.nodeId} className="glass-card p-4 rounded-3xl border border-white/5 bg-white/[0.01] flex justify-between items-center relative overflow-hidden group"><div className={`absolute top-0 left-0 w-1 h-full opacity-40 ${isDirect ? 'bg-[#00ff88]' : isSpillover ? 'bg-purple-500' : 'bg-blue-400'}`} /><div className="flex items-center space-x-4"><div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center text-white/40 font-black text-xs">ID {node.nodeId}</div><div><div className="flex items-center space-x-2">
+                                <UsernameDisplay nodeId={node.nodeId} wallet={node.wallet} />
+                                {explorerType === 'matrix' && <span className={`text-[7px] px-1.5 py-0.5 rounded-sm font-black uppercase tracking-tighter ${isDirect ? 'bg-[#00ff88] text-black' : isSpillover ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-400/20 text-blue-400'}`}>{isDirect ? 'Direct' : isSpillover ? 'Spillover' : 'Team'}</span>}</div><div className="flex items-center space-x-2 mt-1"><span className="text-[9px] px-2 py-0.5 rounded bg-white/5 text-white/40 font-black">SPONSOR {node.sponsor}</span><span className="text-[9px] px-2 py-0.5 rounded bg-[#00ff88]/20 text-[#00ff88] font-black">TIER {node.tier}</span></div></div></div><a href={`https://bscscan.com/address/${node.wallet}`} target="_blank" rel="noreferrer" className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center group-hover:bg-[#00ff88]/20 transition-colors"><ArrowUpRight size={14} className="opacity-40" /></a></div>
                         );
                     }) : <div className="py-20 text-center opacity-30"><p className="text-xs font-black uppercase tracking-widest">No Nodes Found</p></div>}</div>
                 </div>
             )}
         </div>
-      )}
-    </div>
-  );
+      const renderPool = () => {
+    if (!rewardPoolData) {
+      return (
+        <div className="p-4 pb-24 h-full flex flex-col items-center justify-center text-center">
+          <div className="w-24 h-24 bg-[#00ff88]/5 rounded-full flex items-center justify-center mb-8 border border-[#00ff88]/10 animate-pulse">
+            <Flame className="w-12 h-12 text-[#00ff88] opacity-20" />
+          </div>
+          <h3 className="text-2xl font-black text-white uppercase mb-3 tracking-tighter">Initializing Pool</h3>
+          <p className="text-[10px] opacity-40 uppercase tracking-[0.2em] max-w-[220px] font-bold leading-relaxed">Securely synchronizing your node weight with the global reward protocol...</p>
+        </div>
+      );
+    }
 
+    const { 
+      currentPoolId, 
+      poolName, 
+      claimable, 
+      totalEarned, 
+      remainingCap, 
+      lifetimeCap, 
+      isQualifiedForNext, 
+      nextPoolId, 
+      nfeTier,
+      missingRequirements // [missingTier, missingDirects, missingTeam]
+    } = rewardPoolData;
+
+    const BRONZE_TIER = 6, SILVER_TIER = 10, GOLD_TIER = 14;
+    const BRONZE_DIRECT = 2, SILVER_DIRECT = 5, GOLD_DIRECT = 10;
+    const BRONZE_TEAM = 62, SILVER_TEAM = 2046, GOLD_TEAM = 32766;
+
+    const userTier    = Number(nfeTier) || nodeTier || 0;
+    const userDirects = onchainStats?.directNodes || 0;
+    const userTeam    = onchainStats?.totalMatrixNodes || 0;
+
+    const bronzeQualified = userTier >= BRONZE_TIER && userDirects >= BRONZE_DIRECT && userTeam >= BRONZE_TEAM;
+    const silverQualified = userTier >= SILVER_TIER && userDirects >= SILVER_DIRECT && userTeam >= SILVER_TEAM;
+    const goldQualified   = userTier >= GOLD_TIER   && userDirects >= GOLD_DIRECT   && userTeam >= GOLD_TEAM;
+
+    const getPoolColor = (id) => {
+      if (id === 3 || poolName === 'Gold') return '#FFD700';
+      if (id === 2 || poolName === 'Silver') return '#C0C0C0';
+      return '#CD7F32';
+    };
+    
+    const poolColor = currentPoolId > 0 ? getPoolColor(currentPoolId) : '#00ff88';
+    
+    const nextPoolName = nextPoolId === 3 ? 'GOLD' : nextPoolId === 2 ? 'SILVER' : 'BRONZE';
+    const nextPoolColor = getPoolColor(nextPoolId);
+
+    const capPct = (lifetimeCap && Number(lifetimeCap) > 0)
+      ? Math.min(100, Math.max(2, Math.round(((Number(lifetimeCap) - Number(remainingCap)) / Number(lifetimeCap)) * 100)))
+      : 0;
+
+    const RequirementRow = ({ label, current, required, missing, isMet }) => (
+      <div className="flex justify-between items-center py-2 border-b border-white/5 last:border-0">
+        <div>
+          <p className="text-[10px] font-black opacity-40 uppercase tracking-widest">{label}</p>
+          <p className={`text-sm font-black ${isMet ? 'text-[#00ff88]' : 'text-white'}`}>
+            {current} <span className="opacity-30 mx-1">/</span> {required}
+          </p>
+        </div>
+        <div className="text-right">
+          {isMet ? (
+            <div className="w-6 h-6 bg-[#00ff88]/20 rounded-full flex items-center justify-center">
+              <Check size={14} className="text-[#00ff88]" />
+            </div>
+          ) : (
+            <div className="px-3 py-1 bg-white/5 rounded-lg border border-white/10">
+              <span className="text-[9px] font-black text-white/60 uppercase">-{missing} needed</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+
+    return (
+      <div className="p-4 pb-32 h-full overflow-y-auto no-scrollbar relative">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-[#00ff88]/5 rounded-full blur-[100px] -z-10 pointer-events-none"></div>
+
+        {/* Header Section */}
+        <div className="flex justify-between items-start mb-8 px-2">
+          <div>
+            <h2 className="text-4xl font-black text-white tracking-tighter leading-none mb-2">REWARDS</h2>
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-[#00ff88] rounded-full animate-pulse"></div>
+              <p className="text-[10px] text-[#00ff88] font-black uppercase tracking-[0.2em] italic">Active Protocol v2.5</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className={`px-4 py-1.5 rounded-2xl border-2 backdrop-blur-xl mb-1 shadow-lg shadow-black/20`} 
+                 style={{ borderColor: `${poolColor}40`, backgroundColor: `${poolColor}10` }}>
+              <span className="text-[11px] font-black uppercase tracking-widest drop-shadow-sm" style={{ color: poolColor }}>
+                {currentPoolId > 0 ? poolName.toUpperCase() : 'NO RANK'}
+              </span>
+            </div>
+            <p className="text-[9px] font-black opacity-30 uppercase tracking-[0.1em]">NODE ID #{nodeId}</p>
+          </div>
+        </div>
+
+        {/* Main Reward Card */}
+        {currentPoolId > 0 && (
+          <div className="glass-card p-8 rounded-[48px] mb-8 border-white/10 bg-gradient-to-br from-white/[0.08] to-transparent shadow-[0_20px_40px_rgba(0,0,0,0.4)] relative overflow-hidden group">
+            <div className="absolute -top-24 -right-24 w-64 h-64 rounded-full blur-[80px] opacity-20 transition-all duration-1000 group-hover:scale-125" style={{ backgroundColor: poolColor }} />
+            
+            <div className="flex justify-between items-end mb-8 relative z-10">
+              <div>
+                <p className="text-[11px] font-black opacity-40 uppercase tracking-[0.2em] mb-2">Available for Claim</p>
+                <div className="flex items-baseline space-x-3">
+                  <h4 className="text-5xl font-black text-white tracking-tighter leading-none">{formatBNB(claimable)}</h4>
+                  <span className="text-xl font-black text-[#00ff88]">BNB</span>
+                </div>
+              </div>
+              <button
+                onClick={handlePoolClaim}
+                disabled={isProcessing || Number(claimable) === 0}
+                className="w-16 h-16 rounded-3xl flex items-center justify-center shadow-2xl active:scale-90 disabled:opacity-30 disabled:grayscale transition-all"
+                style={{ backgroundColor: Number(claimable) > 0 ? poolColor : '#ffffff20' }}
+              >
+                {isProcessing ? <Loader2 size={24} className="animate-spin text-black" /> : <ArrowUpRight size={28} className={Number(claimable) > 0 ? 'text-black' : 'text-white/20'} />}
+              </button>
+            </div>
+
+            <div className="space-y-3 relative z-10">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-[10px] font-black opacity-40 uppercase tracking-widest">Yield Evolution</span>
+                <span className="text-[10px] font-black text-white bg-white/10 px-3 py-1 rounded-full">{capPct}% CAP REACHED</span>
+              </div>
+              <div className="w-full h-3 bg-black/40 rounded-full overflow-hidden p-0.5 border border-white/5 shadow-inner">
+                <div
+                  className="h-full rounded-full transition-all duration-1000 relative"
+                  style={{ width: `${capPct}%`, background: `linear-gradient(90deg, ${poolColor}, #ffffff88)` }}
+                >
+                  <div className="absolute top-0 right-0 w-2 h-full bg-white opacity-40 animate-pulse"></div>
+                </div>
+              </div>
+              <div className="flex justify-between items-center px-1">
+                <span className="text-[9px] opacity-30 font-black uppercase">Earnings: {formatBNB(totalEarned)}</span>
+                <span className="text-[9px] opacity-30 font-black uppercase">Limit: {formatBNB(lifetimeCap)}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Current Eligibility Status */}
+        <div className="grid grid-cols-3 gap-3 mb-8">
+          {[
+            { id: 1, name: 'BRONZE', color: '#CD7F32', isQualified: bronzeQualified, isActive: currentPoolId === 1 },
+            { id: 2, name: 'SILVER', color: '#C0C0C0', isQualified: silverQualified, isActive: currentPoolId === 2 },
+            { id: 3, name: 'GOLD', color: '#FFD700', isQualified: goldQualified, isActive: currentPoolId === 3 },
+          ].map((item) => (
+            <div key={item.name} 
+                 className={`glass-card p-4 rounded-[32px] border transition-all duration-500 relative overflow-hidden flex flex-col items-center justify-center ${item.isActive ? 'scale-105 shadow-2xl border-white/40' : 'opacity-40 grayscale border-white/5'}`}
+                 style={{ backgroundColor: item.isActive ? `${item.color}20` : undefined, borderColor: item.isActive ? item.color : undefined }}>
+              <div className="mb-2 p-2 rounded-xl bg-white/5">
+                <Flame size={18} style={{ color: item.isQualified ? item.color : '#ffffff20' }} fill={item.isQualified ? item.color : 'transparent'} />
+              </div>
+              <p className="text-[8px] font-black tracking-widest mb-1" style={{ color: item.color }}>{item.isQualified ? item.name : 'LOCKED'}</p>
+              {item.isActive && <div className="absolute bottom-0 left-0 w-full h-1" style={{ backgroundColor: item.color }}></div>}
+            </div>
+          ))}
+        </div>
+
+        {/* Requirements Card */}
+        <div className="glass-card p-6 rounded-[40px] mb-8 border-white/5 bg-white/[0.02] backdrop-blur-3xl shadow-xl">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-[12px] font-black text-white uppercase tracking-[0.2em] italic">Qualification Roadmap</h3>
+            <div className="px-4 py-1.5 rounded-full bg-[#00ff88]/10 border border-[#00ff88]/30">
+              <p className="text-[9px] font-black text-[#00ff88] uppercase tracking-tighter">Pool Goal: {nextPoolName}</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {(() => {
+              const reqTier   = nextPoolId === 3 ? GOLD_TIER   : nextPoolId === 2 ? SILVER_TIER   : BRONZE_TIER;
+              const reqDirect = nextPoolId === 3 ? GOLD_DIRECT : nextPoolId === 2 ? SILVER_DIRECT : BRONZE_DIRECT;
+              const reqTeam   = nextPoolId === 3 ? GOLD_TEAM   : nextPoolId === 2 ? SILVER_TEAM   : BRONZE_TEAM;
+              
+              // Map missingRequirements to human-readable deltas
+              const missTier = missingRequirements ? missingRequirements[0] : Math.max(0, reqTier - userTier);
+              const missDirect = missingRequirements ? missingRequirements[1] : Math.max(0, reqDirect - userDirects);
+              const missTeam = missingRequirements ? missingRequirements[2] : Math.max(0, reqTeam - userTeam);
+
+              return (
+                <>
+                  <RequirementRow label="NFE Tier Ranking" current={userTier} required={reqTier} missing={missTier} isMet={userTier >= reqTier} />
+                  <RequirementRow label="Direct Node Partners" current={userDirects} required={reqDirect} missing={missDirect} isMet={userDirects >= reqDirect} />
+                  <RequirementRow label="Global Network Strength" current={userTeam} required={reqTeam} missing={missTeam} isMet={userTeam >= reqTeam} />
+                </>
+              );
+            })()}
+          </div>
+
+          <div className="mt-8">
+            {currentPoolId === 0 ? (
+              <button
+                onClick={handlePoolRegister}
+                disabled={isProcessing || !bronzeQualified}
+                className={`w-full py-5 rounded-[24px] font-black text-sm tracking-widest flex items-center justify-center space-x-3 transition-all ${bronzeQualified ? 'bg-[#00ff88] text-black shadow-[0_10px_30px_rgba(0,255,136,0.2)] active:scale-95' : 'bg-white/5 text-white/20 border border-white/5 grayscale'}`}
+              >
+                {isProcessing ? <Loader2 className="animate-spin" /> : <span>{bronzeQualified ? 'INITIALIZE BRONZE ENTRY' : 'INSUFFICIENT WEIGHT'}</span>}
+              </button>
+            ) : nextPoolId > 0 ? (
+              <button
+                onClick={handlePoolRegister}
+                disabled={isProcessing || !isQualifiedForNext}
+                className={`w-full py-5 rounded-[24px] font-black text-sm tracking-widest flex items-center justify-center space-x-3 transition-all shadow-2xl ${isQualifiedForNext ? 'text-black active:scale-95' : 'bg-white/5 text-white/20 border border-white/5 grayscale'}`}
+                style={{ backgroundColor: isQualifiedForNext ? nextPoolColor : undefined }}
+              >
+                {isProcessing ? <Loader2 className="animate-spin text-black" /> : <span>{isQualifiedForNext ? `ASCEND TO ${nextPoolName} RANK` : 'ASCENSION LOCKED'}</span>}
+              </button>
+            ) : (
+              <div className="p-6 rounded-[24px] bg-gradient-to-r from-[#FFD700]/20 to-transparent border border-[#FFD700]/40 flex items-center justify-center space-x-4">
+                <Zap size={24} className="text-[#FFD700]" strokeWidth={3} />
+                <p className="text-sm font-black text-[#FFD700] uppercase tracking-widest">MAXIMUM RANK ACHIEVED</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Network Stats Footer */}
+        {globalPoolStats && (
+          <div className="space-y-4">
+            <div className="flex justify-between items-center px-2">
+              <h3 className="text-[10px] font-black opacity-40 uppercase tracking-[0.2em]">Collective Distribution</h3>
+              <div className="w-1.5 h-1.5 bg-[#00ff88] rounded-full"></div>
+            </div>
+            
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: 'BRONZE', count: globalPoolStats.bronzeNodes, color: '#CD7F32' },
+                { label: 'SILVER', count: globalPoolStats.silverNodes, color: '#C0C0C0' },
+                { label: 'GOLD', count: globalPoolStats.goldNodes, color: '#FFD700' },
+              ].map(p => (
+                <div key={p.label} className="glass-card p-4 rounded-[28px] border-white/5 bg-black/40 text-center shadow-inner">
+                  <p className="text-[8px] font-black opacity-40 mb-1" style={{ color: p.color }}>{p.label}</p>
+                  <p className="text-xl font-black text-white">{p.count}</p>
+                  <div className="w-4 h-0.5 mx-auto mt-1 rounded-full opacity-30" style={{ backgroundColor: p.color }}></div>
+                </div>
+              ))}
+            </div>
+
+            <div className="glass-card p-6 rounded-[32px] border-white/5 bg-gradient-to-r from-black/40 to-transparent flex justify-between items-center shadow-lg">
+              <div>
+                <p className="text-[9px] font-black opacity-30 uppercase tracking-widest mb-1">Global Rewards Inflow</p>
+                <p className="text-xl font-black text-[#00ff88]">{formatBNB(globalPoolStats.totalReceived)} <span className="text-[10px] opacity-40">BNB</span></p>
+              </div>
+              <div className="text-right">
+                <p className="text-[9px] font-black opacity-30 uppercase tracking-widest mb-1">Network Outflow</p>
+                <p className="text-xl font-black text-white">{formatBNB(globalPoolStats.totalDistributed)} <span className="text-[10px] opacity-40">BNB</span></p>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };    </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
   const renderEarn = () => (
     <div className="p-4 pb-24 h-full overflow-y-auto">
       <h2 className="text-3xl font-black mb-1 text-[#00ff88]">EARN REWARDS</h2>
@@ -877,7 +1391,7 @@ const App = () => {
                    <div className="glass-card p-6 rounded-3xl border-2 border-[#00ff88]/20 bg-[#00ff88]/[0.02] shadow-[0_0_30px_rgba(0,255,136,0.05)]"><div className="flex justify-between items-center mb-6"><span className="px-3 py-1 bg-[#00ff88]/10 text-[#00ff88] rounded-full text-[10px] font-black tracking-widest">REAL ON-CHAIN DATA</span><div className="flex items-center space-x-1 text-[#00ff88]"><span className="text-2xl font-black">{rewardStats.total}</span><span className="text-xs font-bold opacity-60">BNB</span></div></div><div className="space-y-3 pt-6 border-t border-white/5 text-xs font-medium"><div className="flex justify-between"><span className="opacity-40">Referral Rewards</span><span className="font-mono text-[#00ff88]">+{rewardStats.referral}</span></div><div className="flex justify-between"><span className="opacity-40">Direct Rewards</span><span className="font-mono text-[#00ff88]">+{rewardStats.direct}</span></div><div className="flex justify-between"><span className="opacity-40">Layer Rewards</span><span className="font-mono text-[#00ff88]">+{rewardStats.tier}</span></div><div className="flex justify-between"><span className="opacity-40">Matrix Rewards</span><span className="font-mono text-[#00ff88]">+{rewardStats.binary}</span></div><div className="flex justify-between"><span className="opacity-40">Pool Rewards</span><span className="font-mono text-[#00ff88]">+{rewardStats.pool}</span></div><div className="flex justify-between pt-2 text-red-500/60"><span className="opacity-60">Missed Rewards (Lost)</span><span className="font-mono">-{rewardStats.lost}</span></div><div className="flex justify-between pt-3 mt-3 border-t border-white/5 opacity-40 italic"><span>Total Node Contribution</span><span>{onchainStats?.totalContribution || '0'} BNB</span></div></div></div>
                )}
                {incomeHistory.length > 0 && (
-                   <div className="mt-8"><div className="flex justify-between items-center mb-4"><h3 className="text-[10px] font-black text-[#00ff88] uppercase tracking-widest flex items-center space-x-2"><TrendingUp size={14} /><span>Recent Operations</span></h3><button onClick={() => syncBlockchainData(userAddress)} className="text-[10px] font-black opacity-30 hover:opacity-100 transition-opacity">REFRESH</button></div><div className="space-y-3">{incomeHistory.map((item, i) => { const labels = ["REFERRAL", "DIRECT", "LAYER", "MATRIX"]; const colors = ["text-blue-400 bg-blue-400/10", "text-orange-400 bg-orange-400/10", "text-purple-400 bg-purple-400/10", "text-[#00ff88] bg-[#00ff88]/10"]; const typeLabel = labels[item.rewardType] || "REWARD"; const typeColor = colors[item.rewardType] || "text-white bg-white/10"; const date = new Date(item.time * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); return (<div key={i} className="glass-card p-4 rounded-3xl flex justify-between items-center border border-white/5 bg-white/[0.01] hover:bg-white/[0.03] transition-colors"><div className="flex items-center space-x-4"><div className={`px-2.5 py-1 rounded-lg text-[8px] font-black tracking-widest ${typeColor}`}>{typeLabel}</div><div><p className="text-[11px] font-black">+{item.amount} BNB</p><p className="text-[9px] opacity-30 font-medium uppercase">{date}</p></div></div><div className="text-right"><p className="text-[9px] font-black opacity-40 italic">Tier {item.tier}</p><p className="text-[8px] opacity-20 font-medium uppercase tracking-tighter">L{item.layer}</p></div></div>); })}</div></div>
+                   <div className="mt-8"><div className="flex justify-between items-center mb-4"><h3 className="text-[10px] font-black text-[#00ff88] uppercase tracking-widest flex items-center space-x-2"><TrendingUp size={14} /><span>Recent Operations</span></h3><button onClick={() => syncBlockchainData(userAddress)} className="text-[10px] font-black opacity-30 hover:opacity-100 transition-opacity">REFRESH</button></div><div className="space-y-3">{incomeHistory.map((item, i) => { const labels = ["NONE", "REFERRAL", "LAYER", "MATRIX", "DIRECT", "POOL", "MISSED"]; const colors = ["text-white bg-white/10", "text-blue-400 bg-blue-400/10", "text-orange-400 bg-orange-400/10", "text-[#00ff88] bg-[#00ff88]/10", "text-purple-400 bg-purple-400/10", "text-pink-400 bg-pink-400/10", "text-red-500 bg-red-500/10"]; const typeLabel = labels[item.rewardType] || "REWARD"; const typeColor = colors[item.rewardType] || "text-white bg-white/10"; const date = new Date(item.time * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); return (<div key={i} className="glass-card p-4 rounded-3xl flex justify-between items-center border border-white/5 bg-white/[0.01] hover:bg-white/[0.03] transition-colors"><div className="flex items-center space-x-4"><div className={`px-2.5 py-1 rounded-lg text-[8px] font-black tracking-widest ${typeColor}`}>{typeLabel}</div><div><p className="text-[11px] font-black">+{item.amount} BNB</p><p className="text-[9px] opacity-30 font-medium uppercase">{date}</p></div></div><div className="text-right"><p className="text-[9px] font-black opacity-40 italic">Tier {item.tier}</p><p className="text-[8px] opacity-20 font-medium uppercase tracking-tighter">L{item.layer}</p></div></div>); })}</div></div>
                )}
                <div className="pt-8 opacity-40"><button onClick={handleHardReset} className="w-full py-4 border border-red-500/20 text-red-500 text-[10px] font-black tracking-widest uppercase rounded-2xl active:scale-95 transition-all">Emergency Data Reset</button></div>
           </div>
@@ -912,6 +1426,7 @@ const App = () => {
         <div className="flex-grow space-y-2">
           <SidebarItem id="home" icon={Pickaxe} label="Tap to Earn" />
           <SidebarItem id="mine" icon={TrendingUp} label="Mine Upgrades" />
+          <SidebarItem id="pool" icon={Flame} label="Reward Pool" />
           <SidebarItem id="friends" icon={Users} label="Team Matrix" />
           <SidebarItem id="earn" icon={Gift} label="Daily Tasks" />
           <SidebarItem id="airdrop" icon={Wallet} label="AIP Stats" />
@@ -949,6 +1464,7 @@ const App = () => {
           <main className="flex-grow z-10 overflow-hidden main-content-scroll">
             {currentView === 'home' && renderHome()}
             {currentView === 'mine' && renderMine()}
+            {currentView === 'pool' && renderPool()}
             {currentView === 'friends' && renderFriends()}
             {currentView === 'airdrop' && renderAirdrop()}
             {currentView === 'earn' && renderEarn()}
@@ -959,6 +1475,7 @@ const App = () => {
           <nav className="lg:hidden fixed bottom-8 left-6 right-6 h-20 glass-card rounded-[32px] flex items-center justify-around px-2 z-50 shadow-[0_20px_50px_rgba(0,0,0,0.8)] border-white/5">
             <button onClick={() => setCurrentView('home')} className={`nav-item flex flex-col items-center justify-center w-14 h-14 rounded-2xl ${currentView === 'home' ? 'active' : 'opacity-80'}`}><Pickaxe size={22} /><span className="text-[11px] mt-1 font-black uppercase tracking-tighter">Tap</span></button>
             <button onClick={() => setCurrentView('mine')} className={`nav-item flex flex-col items-center justify-center w-14 h-14 rounded-2xl ${currentView === 'mine' ? 'active' : 'opacity-80'}`}><TrendingUp size={22} /><span className="text-[11px] mt-1 font-black uppercase tracking-tighter">Mine</span></button>
+            <button onClick={() => setCurrentView('pool')} className={`nav-item flex flex-col items-center justify-center w-14 h-14 rounded-2xl ${currentView === 'pool' ? 'active' : 'opacity-80'}`}><Flame size={22} /><span className="text-[11px] mt-1 font-black uppercase tracking-tighter">Pool</span></button>
             <button onClick={() => setCurrentView('friends')} className={`nav-item flex flex-col items-center justify-center w-14 h-14 rounded-2xl ${currentView === 'friends' ? 'active' : 'opacity-80'}`}><Users size={22} /><span className="text-[11px] mt-1 font-black uppercase tracking-tighter">Team</span></button>
             <button onClick={() => setCurrentView('earn')} className={`nav-item flex flex-col items-center justify-center w-14 h-14 rounded-2xl ${currentView === 'earn' ? 'active' : 'opacity-80'}`}><Gift size={22} /><span className="text-[11px] mt-1 font-black uppercase tracking-tighter">Earn</span></button>
             <button onClick={() => setCurrentView('airdrop')} className={`nav-item flex flex-col items-center justify-center w-14 h-14 rounded-2xl ${currentView === 'airdrop' ? 'active' : 'opacity-80'}`}><Wallet size={22} /><span className="text-[11px] mt-1 font-black uppercase tracking-tighter">Stats</span></button>

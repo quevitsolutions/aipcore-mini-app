@@ -1196,29 +1196,7 @@ const App = () => {
         }
       `}} />
 
-      {/* 4. Telegram Flow / Strong CTAs (Lower Third) */}
-      <div className="px-6 flex flex-col space-y-3 z-20 mb-6">
-        {nodeId === 0 ? (
-            <button 
-                onClick={() => setCurrentView('mine')} 
-                className="w-full py-4 text-center rounded-2xl font-black text-[13px] tracking-wide relative overflow-hidden group shadow-[0_0_20px_rgba(0,255,136,0.3)] bg-gradient-to-r from-[#00ff88] to-[#00ccff] text-black active:scale-[0.98] transition-transform"
-            >
-                <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform"/>
-                <span className="flex items-center justify-center space-x-2">
-                    <TrendingUp size={18} />
-                    <span>🚀 ACTIVATE NODE (UNLOCK INCOME)</span>
-                </span>
-            </button>
-        ) : (
-            <button 
-                onClick={handleInvite} 
-                className="w-full py-4 text-center rounded-2xl font-black text-[13px] tracking-wide border border-[#00ff88]/40 bg-[#00ff88]/10 text-[#00ff88] flex items-center justify-center space-x-2 active:scale-[0.98] transition-transform backdrop-blur-md"
-            >
-                <Share2 size={18} />
-                <span>INVITE FRIENDS & EARN</span>
-            </button>
-        )}
-      </div>
+
 
       {/* 5. Energy Bar (Absolute Bottom) */}
       <div className="px-6 pb-24 z-20">

@@ -165,17 +165,24 @@ export const getNodeData = async (nodeId) => {
       getViewContract()
     ]);
 
-    // Attempt to fetch stats from VIEW_CONTRACT (source of truth for calculated counts)
-    // Fall back to CORE_CONTRACT only if VIEW_CONTRACT fails
-    const [node, stats] = await Promise.all([
+    // Fetch from multiple sources to ensure accurate tier reporting (especially for Genesis nodes)
+    const [node, stats, qualData] = await Promise.all([
       coreContract.getNode(nodeId),
-      viewContract.getNodeStats(nodeId).catch(() => coreContract.getNodeStats(nodeId).catch(() => null))
+      viewContract.getNodeStats(nodeId).catch(() => coreContract.getNodeStats(nodeId).catch(() => null)),
+      coreContract.getPoolQualificationData(nodeId).catch(() => null)
     ]);
 
     if (!node || node.wallet === ethers.ZeroAddress) return null;
 
-    // source of truth for counts and tier: stats aggregator
-    const liveTier = (stats && stats[0] !== undefined) ? Number(stats[0]) : Number(node.tier);
+    // Determine the most accurate tier by checking all indices
+    // 1. stats[0] = tier from ViewContract/stats aggregator
+    // 2. node.tier = base tier in CoreContract Node struct
+    // 3. qualData[3] = currentLevel from getPoolQualificationData (canonical Giclub source)
+    const statsTier = (stats && stats[0] !== undefined) ? Number(stats[0]) : 0;
+    const coreTier = Number(node.tier);
+    const qualTier = (qualData && qualData[3] !== undefined) ? Number(qualData[3]) : 0;
+
+    const liveTier = Math.max(statsTier, coreTier, qualTier);
     const liveDirects = (stats && stats[1] !== undefined) ? Number(stats[1]) : Number(node.directNodes || 0);
     const liveMatrix = (stats && stats[2] !== undefined) ? Number(stats[2]) : Number(node.totalMatrixNodes || 0);
 

@@ -160,39 +160,32 @@ export const getWalletBalance = async (address) => {
 
 export const getNodeData = async (nodeId) => {
   try {
-    const [coreContract, viewContract] = await Promise.all([
-      getCoreContract(),
-      getViewContract()
-    ]);
+    const coreContract = await getCoreContract();
 
-    // Fetch from multiple sources to ensure accurate tier reporting (especially for Genesis nodes)
-    const [node, stats, qualData] = await Promise.all([
+    // GICLUB SOURCE OF TRUTH: getPoolQualificationData[3] = currentLevel (tier)
+    // This is EXACTLY what GICLUB's useUserInfo hook fetches (useContract.ts line 12)
+    const [node, qualData] = await Promise.all([
       coreContract.getNode(nodeId),
-      viewContract.getNodeStats(nodeId).catch(() => coreContract.getNodeStats(nodeId).catch(() => null)),
       coreContract.getPoolQualificationData(nodeId).catch(() => null)
     ]);
 
     if (!node || node.wallet === ethers.ZeroAddress) return null;
 
-    // Determine the most accurate tier by checking all indices
-    // 1. stats[0] = tier from ViewContract/stats aggregator
-    // 2. node.tier = base tier in CoreContract Node struct
-    // 3. qualData[3] = currentLevel from getPoolQualificationData (canonical Giclub source)
-    const statsTier = (stats && stats[0] !== undefined) ? Number(stats[0]) : 0;
-    const coreTier = Number(node.tier);
-    const qualTier = (qualData && qualData[3] !== undefined) ? Number(qualData[3]) : 0;
+    // Index 3 of getPoolQualificationData = currentLevel (the user's true tier)
+    // This is: [totalDeposited, directReferrals, totalTeam, currentLevel, ...]
+    const qualTier  = (qualData && qualData[3] !== undefined) ? Number(qualData[3]) : 0;
+    const structTier = Number(node.tier);
 
-    const liveTier = Math.max(statsTier, coreTier, qualTier);
-    const liveDirects = (stats && stats[1] !== undefined) ? Number(stats[1]) : Number(node.directNodes || 0);
-    const liveMatrix = (stats && stats[2] !== undefined) ? Number(stats[2]) : Number(node.totalMatrixNodes || 0);
+    // Take the higher value — qualTier is canonical per GICLUB logic
+    const liveTier = Math.max(qualTier, structTier);
 
     return {
       wallet: node.wallet,
       nodeId: Number(node.nodeId),
       sponsor: Number(node.sponsor),
       tier: liveTier,
-      directNodes: liveDirects,
-      totalMatrixNodes: liveMatrix,
+      directNodes: Number(node.directNodes || 0),
+      totalMatrixNodes: Number(node.totalMatrixNodes || 0),
       joinedAt: Number(node.joinedAt),
       totalContribution: formatBNB(node.totalContribution),
     };
@@ -201,6 +194,25 @@ export const getNodeData = async (nodeId) => {
     return null;
   }
 };
+
+// Standalone function to get the authoritative tier for any nodeId (used by App.jsx)
+export const getNodeTier = async (nodeId) => {
+  try {
+    const contract = await getCoreContract();
+    // GICLUB canonical: getPoolQualificationData[3] = currentLevel
+    const qualData = await contract.getPoolQualificationData(nodeId);
+    return Number(qualData[3]);
+  } catch (err) {
+    try {
+      const contract = await getCoreContract();
+      const node = await contract.getNode(nodeId);
+      return Number(node.tier);
+    } catch {
+      return 0;
+    }
+  }
+};
+
 
 export const getRewardStats = async (nodeId) => {
     try {

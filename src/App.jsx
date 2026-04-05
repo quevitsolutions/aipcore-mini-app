@@ -63,7 +63,8 @@ import {
   getGlobalTransparencyData,
   getRewardPoolDiagnostic,
   getOffchainReferralStats,
-  getCoreContract
+  getCoreContract,
+  getNodeTier
 } from './utils/web3';
 import Registration from './components/Registration';
 import NeuralHub from './components/NeuralHub';
@@ -334,7 +335,7 @@ const App = () => {
       setIsAdmin(address.toLowerCase() === ownerAddr.toLowerCase());
 
       if (id > 0) {
-          const [data, rewards, matrix, offchain, history, pData, gStats, pReward, transparency, diagnostic, canUpgrade] = await Promise.all([
+          const [data, rewards, matrix, offchain, history, pData, gStats, pReward, transparency, diagnostic, canUpgrade, directQualTier] = await Promise.all([
             getNodeData(id),
             getRewardStats(id),
             getMatrixLevelsData(id),
@@ -345,26 +346,26 @@ const App = () => {
             getPendingReward(address),
             getGlobalTransparencyData(),
             getRewardPoolDiagnostic(),
-            canUpgradeCheck(id, 1)
+            canUpgradeCheck(id, 1),
+            getNodeTier(id)   // GICLUB: getPoolQualificationData[3] = currentLevel
           ]);
           
-          // Always resolve the best available tier from ANY source
+          // GICLUB LOGIC: getPoolQualificationData[3] = currentLevel = user's real tier
+          // Fetch directly as authoritative source (same as GICLUB useUserInfo hook)
           const coreTier = data ? Number(data.tier) : 0;
           const poolTier = (pData && pData.nfeTier !== undefined) ? Number(pData.nfeTier) : 0;
-          const unifiedTier = Math.max(coreTier, poolTier);
+          const qualTier = directQualTier > 0 ? directQualTier : 0;
+          const unifiedTier = Math.max(coreTier, poolTier, qualTier);
 
-          // Always set node tier — even if getNodeData is null, pool tier is authoritative
+          // Always set node tier regardless of which data source returned it
           if (unifiedTier > 0 || id > 0) {
             setNodeTier(unifiedTier);
           }
 
           if (data) {
             setOnchainStats(data);
-            
-            // Sync current state to backend (Unified Tier + Telegram identity + Directs included)
             syncUserToBackend(coinsRef.current, tapsRef.current, id, unifiedTier, telegramUser, data?.directNodes || 0);
           } else {
-            // Even without node data, sync the correct tier to backend
             syncUserToBackend(coinsRef.current, tapsRef.current, id, unifiedTier, telegramUser, 0);
           }
 

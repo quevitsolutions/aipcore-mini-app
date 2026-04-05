@@ -379,14 +379,21 @@ export const getDirectReferralsList = async (nodeId, count = 20) => {
             [...Array(Math.min(count, 100))].map((_, i) => contract.teams(nodeId, 1, i))
         );
         const validIds = ids.filter(id => Number(id) > 0);
-        const nodes = await Promise.all(validIds.map(id => contract.getNode(id)));
-        return nodes.map(n => ({
-            wallet: n.wallet,
-            nodeId: Number(n.nodeId),
-            sponsor: Number(n.sponsor),
-            tier: Number(n.tier),
-            joinedAt: Number(n.joinedAt)
-        })).filter(n => n.nodeId > 0);
+        // Fetch both node data and authoritative level in parallel per node
+        const results = await Promise.all(validIds.map(async (id) => {
+            const [n, level] = await Promise.all([
+                contract.getNode(id),
+                contract.getUserLevel(id).catch(() => 0)
+            ]);
+            return {
+                wallet: n.wallet,
+                nodeId: Number(n.nodeId),
+                sponsor: Number(n.sponsor),
+                tier: Math.max(Number(n.tier), Number(level)),
+                joinedAt: Number(n.joinedAt)
+            };
+        }));
+        return results.filter(n => n.nodeId > 0);
     } catch (err) {
         console.error("Direct referrals fetch failed:", err);
         return [];
@@ -397,14 +404,20 @@ export const getMatrixTreeNodes = async (nodeId, level, count = 2) => {
     const contract = await getCoreContract();
     try {
         const matrixLevel = Math.max(0, level - 1);
-        const nodes = await contract.getMatrixUsers(nodeId, matrixLevel, 0, count);
-        return nodes.map(n => ({
-            wallet: n.wallet,
-            nodeId: Number(n.nodeId),
-            sponsor: Number(n.sponsor),
-            tier: Number(n.tier),
-            joinedAt: Number(n.joinedAt)
-        })).filter(n => n.nodeId > 0);
+        const rawNodes = await contract.getMatrixUsers(nodeId, matrixLevel, 0, count);
+        const validRaw = rawNodes.filter(n => Number(n.nodeId) > 0);
+        // Enrich each node with authoritative getUserLevel tier
+        const nodes = await Promise.all(validRaw.map(async (n) => {
+            const level = await contract.getUserLevel(n.nodeId).catch(() => 0);
+            return {
+                wallet: n.wallet,
+                nodeId: Number(n.nodeId),
+                sponsor: Number(n.sponsor),
+                tier: Math.max(Number(n.tier), Number(level)),
+                joinedAt: Number(n.joinedAt)
+            };
+        }));
+        return nodes;
     } catch (err) {
         console.error("Matrix tree fetch failed:", err);
         return [];
@@ -415,14 +428,20 @@ export const getUnilevelTreeNodes = async (nodeId, level, count = 20) => {
     const contract = await getCoreContract();
     try {
         const unilevelLevel = Math.max(0, level - 1);
-        const nodes = await contract.getNetworkNodes(nodeId, unilevelLevel, count);
-        return nodes.map(n => ({
-            wallet: n.wallet,
-            nodeId: Number(n.nodeId),
-            sponsor: Number(n.sponsor),
-            tier: Number(n.tier),
-            joinedAt: Number(n.joinedAt)
-        })).filter(n => n.nodeId > 0);
+        const rawNodes = await contract.getNetworkNodes(nodeId, unilevelLevel, count);
+        const validRaw = rawNodes.filter(n => Number(n.nodeId) > 0);
+        // Enrich each node with authoritative getUserLevel tier
+        const nodes = await Promise.all(validRaw.map(async (n) => {
+            const level = await contract.getUserLevel(n.nodeId).catch(() => 0);
+            return {
+                wallet: n.wallet,
+                nodeId: Number(n.nodeId),
+                sponsor: Number(n.sponsor),
+                tier: Math.max(Number(n.tier), Number(level)),
+                joinedAt: Number(n.joinedAt)
+            };
+        }));
+        return nodes;
     } catch (err) {
         console.error("Unilevel tree fetch failed:", err);
         return [];

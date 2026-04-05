@@ -171,8 +171,9 @@ export const getNodeData = async (nodeId) => {
 
     if (!node || node.wallet === ethers.ZeroAddress) return null;
 
-    // Index 3 of getPoolQualificationData = currentLevel (the user's true tier)
-    // This is: [totalDeposited, directReferrals, totalTeam, currentLevel, ...]
+    // Index 1 = directReferrals, Index 2 = totalTeam, Index 3 = currentLevel
+    const directNodes = (qualData && qualData[1] !== undefined) ? Number(qualData[1]) : Number(node.directNodes || 0);
+    const totalMatrixNodes = (qualData && qualData[2] !== undefined) ? Number(qualData[2]) : Number(node.totalMatrixNodes || 0);
     const qualTier  = (qualData && qualData[3] !== undefined) ? Number(qualData[3]) : 0;
     const structTier = Number(node.tier);
 
@@ -184,8 +185,8 @@ export const getNodeData = async (nodeId) => {
       nodeId: Number(node.nodeId),
       sponsor: Number(node.sponsor),
       tier: liveTier,
-      directNodes: Number(node.directNodes || 0),
-      totalMatrixNodes: Number(node.totalMatrixNodes || 0),
+      directNodes,
+      totalMatrixNodes,
       joinedAt: Number(node.joinedAt),
       totalContribution: formatBNB(node.totalContribution),
     };

@@ -737,21 +737,21 @@ const App = () => {
       : 0;
 
     const RequirementRow = ({ label, current, required, missing, isMet }) => (
-      <div className="flex justify-between items-center py-2 border-b border-white/5 last:border-0">
+      <div className="flex justify-between items-center py-3 border-b border-white/10 last:border-0">
         <div>
-          <p className="text-[10px] font-black opacity-40 uppercase tracking-widest">{label}</p>
-          <p className={`text-sm font-black ${isMet ? 'text-[#00ff88]' : 'text-white'}`}>
-            {current} <span className="opacity-30 mx-1">/</span> {required}
+          <p className="text-[10px] font-black opacity-60 uppercase tracking-[0.2em] mb-1">{label}</p>
+          <p className={`text-sm font-black tracking-tight ${isMet ? 'text-[#00ff88]' : 'text-white'}`}>
+            {current} <span className="opacity-20 mx-1">/</span> {required}
           </p>
         </div>
         <div className="text-right">
           {isMet ? (
-            <div className="w-6 h-6 bg-[#00ff88]/20 rounded-full flex items-center justify-center">
-              <Check size={14} className="text-[#00ff88]" />
+            <div className="w-6 h-6 bg-[#00ff88]/20 rounded-full flex items-center justify-center shadow-[0_0_15px_rgba(0,255,136,0.2)]">
+              <Check size={14} className="text-[#00ff88]" strokeWidth={3} />
             </div>
           ) : (
-            <div className="px-3 py-1 bg-white/5 rounded-lg border border-white/10">
-              <span className="text-[9px] font-black text-white/60 uppercase">-{missing} needed</span>
+            <div className="px-4 py-1.5 bg-white/5 rounded-xl border border-white/10 backdrop-blur-md">
+              <span className="text-[9px] font-black text-white/90 uppercase tracking-widest italic animate-pulse">-{missing} needed</span>
             </div>
           )}
         </div>
@@ -1258,14 +1258,10 @@ const App = () => {
                       <p className="text-[14px] font-black text-[#00ff88]">{isLoading ? '...' : (rewardStats ? rewardStats.total : '0.0000')}</p>
                   </div>
                   <div className="text-center w-1/3 border-r border-white/10">
-                      <p className="text-[9px] font-black uppercase text-white/50 tracking-widest mb-0.5">18-Lvl Team</p>
-                      <p className="text-[14px] font-black text-white">{isLoading ? '...' : (onchainStats ? onchainStats.totalMatrixNodes : '0')}</p>
-                  </div>
-                  <div className="text-center w-1/4 border-r border-white/10">
                       <p className="text-[9px] font-black uppercase text-white/50 tracking-widest mb-0.5">Level</p>
                       <p className="text-[12px] font-black" style={{ color: tierInfo.color }}>{isLoading ? '...' : tierInfo.name}</p>
                   </div>
-                  <div className="text-center w-1/4">
+                  <div className="text-center w-1/3">
                       <p className="text-[9px] font-black uppercase text-white/50 tracking-widest mb-0.5">Node ID</p>
                       <p className="text-[14px] font-black text-white">{isLoading ? '...' : (nodeId > 0 ? `#${nodeId}` : 'NONE')}</p>
                   </div>
@@ -1876,7 +1872,7 @@ const App = () => {
                    <div className="glass-card p-6 rounded-3xl border-2 border-[#00ff88]/20 bg-[#00ff88]/[0.02] shadow-[0_0_30px_rgba(0,255,136,0.05)]"><div className="flex justify-between items-center mb-6"><span className="px-3 py-1 bg-[#00ff88]/10 text-[#00ff88] rounded-full text-[10px] font-black tracking-widest">REAL ON-CHAIN DATA</span><div className="flex items-center space-x-1 text-[#00ff88]"><span className="text-2xl font-black">{rewardStats.total}</span><span className="text-xs font-bold opacity-60">BNB</span></div></div><div className="space-y-3 pt-6 border-t border-white/5 text-xs font-medium"><div className="flex justify-between"><span className="opacity-40">Referral Rewards</span><span className="font-mono text-[#00ff88]">+{rewardStats.referral}</span></div><div className="flex justify-between"><span className="opacity-40">Direct Rewards</span><span className="font-mono text-[#00ff88]">+{rewardStats.direct}</span></div><div className="flex justify-between"><span className="opacity-40">Layer Rewards</span><span className="font-mono text-[#00ff88]">+{rewardStats.tier}</span></div><div className="flex justify-between"><span className="opacity-40">Matrix Rewards</span><span className="font-mono text-[#00ff88]">+{rewardStats.binary}</span></div><div className="flex justify-between"><span className="opacity-40">Pool Rewards</span><span className="font-mono text-[#00ff88]">+{rewardStats.pool}</span></div><div className="flex justify-between pt-2 text-red-500/60"><span className="opacity-60">Missed Rewards (Lost)</span><span className="font-mono">-{rewardStats.lost}</span></div><div className="flex justify-between pt-3 mt-3 border-t border-white/5 opacity-40 italic"><span>Total Node Contribution</span><span>{onchainStats?.totalContribution || '0'} BNB</span></div></div></div>
                )}
                {incomeHistory.length > 0 && (
-                   <div className="mt-8"><div className="flex justify-between items-center mb-4"><h3 className="text-[10px] font-black text-[#00ff88] uppercase tracking-widest flex items-center space-x-2"><TrendingUp size={14} /><span>Recent Operations</span></h3><button onClick={() => syncBlockchainData(userAddress)} className="text-[10px] font-black opacity-30 hover:opacity-100 transition-opacity">REFRESH</button></div><div className="space-y-3">{incomeHistory.map((item, i) => { const labels = ["NONE", "REFERRAL", "LAYER", "MATRIX", "DIRECT", "POOL", "MISSED"]; const colors = ["text-white bg-white/10", "text-blue-400 bg-blue-400/10", "text-orange-400 bg-orange-400/10", "text-[#00ff88] bg-[#00ff88]/10", "text-purple-400 bg-purple-400/10", "text-pink-400 bg-pink-400/10", "text-red-500 bg-red-500/10"]; const typeLabel = labels[item.rewardType] || "REWARD"; const typeColor = colors[item.rewardType] || "text-white bg-white/10"; const date = new Date(item.time * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); return (<div key={i} className="glass-card p-4 rounded-3xl flex justify-between items-center border border-white/5 bg-white/[0.01] hover:bg-white/[0.03] transition-colors"><div className="flex items-center space-x-4"><div className={`px-2.5 py-1 rounded-lg text-[8px] font-black tracking-widest ${typeColor}`}>{typeLabel}</div><div><p className="text-[11px] font-black">+{item.amount} BNB</p><p className="text-[9px] opacity-30 font-medium uppercase">{date}</p></div></div><div className="text-right"><p className="text-[9px] font-black opacity-40 italic">Tier {item.tier}</p><p className="text-[8px] opacity-20 font-medium uppercase tracking-tighter">L{item.layer}</p></div></div>); })}</div></div>
+                   <div className="mt-8"><div className="flex justify-between items-center mb-4"><h3 className="text-[10px] font-black text-[#00ff88] uppercase tracking-widest flex items-center space-x-2"><TrendingUp size={14} /><span>Recent Operations</span></h3><button onClick={() => syncBlockchainData(userAddress)} className="text-[10px] font-black opacity-30 hover:opacity-100 transition-opacity">REFRESH</button></div><div className="space-y-3">{incomeHistory.map((item, i) => { const labels = ["NONE", "SPONSOR", "LAYER", "MATRIX", "DIRECT", "POOL", "MISSED"]; const colors = ["text-white bg-white/10", "text-yellow-500 bg-yellow-500/10", "text-blue-400 bg-blue-400/10", "text-purple-400 bg-purple-400/10", "text-[#00ff88] bg-[#00ff88]/10", "text-red-500 bg-red-500/10", "text-red-600 bg-red-600/20"]; const typeLabel = labels[item.rewardType] || "REWARD"; const typeColor = colors[item.rewardType] || "text-white bg-white/10"; const date = new Date(item.time * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); return (<div key={i} className="glass-card p-4 rounded-3xl flex justify-between items-center border border-white/5 bg-white/[0.01] hover:bg-white/[0.03] transition-colors"><div className="flex items-center space-x-4"><div className={`px-2.5 py-1 rounded-lg text-[8px] font-black tracking-widest ${typeColor}`}>{typeLabel}</div><div><p className="text-[11px] font-black">+{item.amount} BNB</p><p className="text-[9px] opacity-30 font-medium uppercase">{date}</p></div></div><div className="text-right"><p className="text-[9px] font-black opacity-40 italic">Tier {item.tier}</p><p className="text-[8px] opacity-20 font-medium uppercase tracking-tighter">L{item.layer}</p></div></div>); })}</div></div>
                )}
                <div className="pt-8 opacity-40"><button onClick={handleHardReset} className="w-full py-4 border border-red-500/20 text-red-500 text-[10px] font-black tracking-widest uppercase rounded-2xl active:scale-95 transition-all">Emergency Data Reset</button></div>
           </div>

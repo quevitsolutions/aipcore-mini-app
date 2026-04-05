@@ -348,16 +348,24 @@ const App = () => {
             canUpgradeCheck(id, 1)
           ]);
           
-          if (data) {
-            const coreTier = Number(data.tier);
-            const poolTier = (pData && pData.nfeTier !== undefined) ? Number(pData.nfeTier) : 0;
-            const unifiedTier = Math.max(coreTier, poolTier);
+          // Always resolve the best available tier from ANY source
+          const coreTier = data ? Number(data.tier) : 0;
+          const poolTier = (pData && pData.nfeTier !== undefined) ? Number(pData.nfeTier) : 0;
+          const unifiedTier = Math.max(coreTier, poolTier);
 
+          // Always set node tier — even if getNodeData is null, pool tier is authoritative
+          if (unifiedTier > 0 || id > 0) {
             setNodeTier(unifiedTier);
+          }
+
+          if (data) {
             setOnchainStats(data);
             
             // Sync current state to backend (Unified Tier + Telegram identity + Directs included)
             syncUserToBackend(coinsRef.current, tapsRef.current, id, unifiedTier, telegramUser, data?.directNodes || 0);
+          } else {
+            // Even without node data, sync the correct tier to backend
+            syncUserToBackend(coinsRef.current, tapsRef.current, id, unifiedTier, telegramUser, 0);
           }
 
           if (rewards) setRewardStats(rewards);

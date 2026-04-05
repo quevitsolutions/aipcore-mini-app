@@ -16,6 +16,14 @@ const RPC_POOL = [
   'https://rpc.ankr.com/bsc'
 ];
 
+// Helper to prevent expensive RPC calls from blocking the UI (essential for Node 36999)
+const withTimeout = (promise, ms = 10000) => {
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('RPC_TIMEOUT')), ms)
+  );
+  return Promise.race([promise, timeout]);
+};
+
 const metadata = {
   name: 'AIPCORE',
   description: 'AIPCORE AI Web3 Gamified App',
@@ -251,17 +259,18 @@ export const getRewardStats = async (nodeId) => {
       const contract = await getCoreContract();
       try {
           // Fetch rewards and all 18 team sizes in parallel (2 calls instead of 19)
-          const [rewards, ...counts] = await Promise.all([
+          // Wrapped in withTimeout because getTeamSize is expensive for Genesis node 36999
+          const [rewards, ...counts] = await withTimeout(Promise.all([
               contract.getTierRewards(nodeId),
               ...Array.from({ length: 18 }, (_, i) => contract.getTeamSize(nodeId, i + 1))
-          ]);
+          ]), 15000); // 15s for heavy trees
           return counts.map((count, i) => ({
               level: i + 1,
               count: Number(count),
               reward: formatBNB(rewards[i])
           }));
       } catch (err) {
-          console.error("Matrix data fetch failed:", err);
+          console.error("Matrix data fetch failed or timed out:", err);
           return [];
       }
   };
@@ -269,7 +278,7 @@ export const getRewardStats = async (nodeId) => {
 export const getIncomeHistory = async (nodeId, length = 10) => {
     const contract = await getCoreContract();
     try {
-        const events = await contract.getIncome(nodeId, length);
+        const events = await withTimeout(contract.getIncome(nodeId, length), 5000);
         return events.map(e => ({
             id: Number(e.id),
             layer: Number(e.layer),
@@ -280,7 +289,7 @@ export const getIncomeHistory = async (nodeId, length = 10) => {
             tier: Number(e.tier)
         }));
     } catch (err) {
-        console.error("Income history fetch failed:", err);
+        console.error("Income history fetch failed or timed out:", err);
         return [];
     }
 };

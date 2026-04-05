@@ -336,18 +336,18 @@ const App = () => {
 
       if (id > 0) {
           const [data, rewards, matrix, offchain, history, pData, gStats, pReward, transparency, diagnostic, canUpgrade, directQualTier] = await Promise.all([
-            getNodeData(id),
-            getRewardStats(id),
-            getMatrixLevelsData(id),
-            getOffchainReferralStats(id),
-            getIncomeHistory(id),
-            getPoolViewData(id),
-            getGlobalPoolStats(),
-            getPendingReward(address),
-            getGlobalTransparencyData(),
-            getRewardPoolDiagnostic(),
-            canUpgradeCheck(id, 1),
-            getNodeTier(id)   // GICLUB: getPoolQualificationData[3] = currentLevel
+            getNodeData(id).catch(() => null),
+            getRewardStats(id).catch(() => null),
+            getMatrixLevelsData(id).catch(() => null),
+            getOffchainReferralStats(id).catch(() => null),
+            getIncomeHistory(id).catch(() => null),
+            getPoolViewData(id).catch(() => null),
+            getGlobalPoolStats().catch(() => null),
+            getPendingReward(address).catch(() => null),
+            getGlobalTransparencyData().catch(() => null),
+            getRewardPoolDiagnostic().catch(() => null),
+            canUpgradeCheck(id, 1).catch(() => false),
+            getNodeTier(id).catch(() => 0)
           ]);
           
           // GICLUB LOGIC: getPoolQualificationData[3] = currentLevel = user's real tier

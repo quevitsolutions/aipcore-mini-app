@@ -306,11 +306,12 @@ export const createNodeTransaction = async (sponsorId) => {
   const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, signer);
   
   const cost = await getTierCostValue(0);
-  const tx = await contract.createNode(sponsorId, { value: cost });
+  const slippageCost = (cost * 105n) / 100n; // 5% buffer like giclub logic
+  const tx = await contract.createNode(sponsorId, { value: slippageCost });
   return await tx.wait();
 };
 
-export const upgradeTierTransaction = async (nodeId, toTier) => {
+export const upgradeTierTransaction = async (nodeId, currentTier, toTier) => {
   const modal = getAppKitModal();
   const bridge = modal.getWalletProvider();
   if (!bridge.walletProvider) throw new Error("Wallet not connected");
@@ -319,8 +320,10 @@ export const upgradeTierTransaction = async (nodeId, toTier) => {
   const signer = await browserProvider.getSigner();
   const contract = new ethers.Contract(CONTRACT_ADDRESS, abi, signer);
   
-  const cost = await contract.getUpgradeCost(toTier - 1, 1);
-  const tx = await contract.unlockTier(nodeId, toTier, { value: cost });
+  const levels = toTier - currentTier;
+  const cost = await contract.getUpgradeCost(currentTier, levels);
+  const slippageCost = (cost * 105n) / 100n; // 5% buffer like giclub logic
+  const tx = await contract.unlockTier(nodeId, toTier, { value: slippageCost });
   return await tx.wait();
 };
 

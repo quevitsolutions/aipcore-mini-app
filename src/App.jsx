@@ -62,8 +62,12 @@ import {
   canUpgradeCheck,
   getGlobalTransparencyData,
   getRewardPoolDiagnostic,
-  getOffchainReferralStats
+  getOffchainReferralStats,
+  getCoreContract
 } from './utils/web3';
+import Registration from './components/Registration';
+import NeuralHub from './components/NeuralHub';
+import EfficiencyModules from './components/EfficiencyModules';
 
 const BACKEND_URL = import.meta.env.DEV ? 'http://localhost:5000/api' : '/api';
 
@@ -71,6 +75,12 @@ const BACKEND_URL = import.meta.env.DEV ? 'http://localhost:5000/api' : '/api';
 const App = () => {
   // Navigation
   const [currentView, setCurrentView] = useState('home');
+
+  const triggerHaptic = (type = 'medium') => {
+    if (window.Telegram?.WebApp?.HapticFeedback) {
+      window.Telegram.WebApp.HapticFeedback.impactOccurred(type);
+    }
+  };
   
   // User Mapping Cache (Node ID -> Telegram Username)
   const [userNames, setUserNames] = useState(new Map());
@@ -147,21 +157,44 @@ const App = () => {
   const [leaderboardTab, setLeaderboardTab] = useState('coins'); // coins, tiers
   const [adminPrice, setAdminPrice] = useState('');
   const [adminAddr, setAdminAddr] = useState({ id: 0, addr: '' });
+  const [sponsorId, setSponsorId] = useState(1); // Default to Genesis Node
   const [tasks, setTasks] = useState(() => {
-    const saved = localStorage.getItem('aipTasks');
-    if (saved) {
-      try {
-        return JSON.parse(saved);
-      } catch (e) {
-        console.warn("Resetting tasks due to corruption");
-      }
-    }
-    return [
-      { id: 'tg', title: 'Join AIP Telegram', reward: 5000, completed: false, link: 'https://t.me/AIPCore' },
-      { id: 'x', title: 'Follow AIP on X', reward: 5000, completed: false, link: 'https://x.com/AIPCore' },
-      { id: 'yt', title: 'Subscribe to YT', reward: 5000, completed: false, link: 'https://youtube.com/AIPCore' }
+    const saved = localStorage.getItem('tasks');
+    return saved ? JSON.parse(saved) : [
+      { id: 1, title: 'Join our Main Group', reward: 5000, completed: false, link: 'https://t.me/AIPCORE_AI' },
+      { id: 2, title: 'Follow Channel', reward: 5000, completed: false, link: 'https://t.me/Aipcore_Global' },
+      { id: 3, title: 'Follow on X', reward: 10000, completed: false, link: 'https://x.com/AIPCore' },
+      { id: 4, title: 'Watch Video Guide', reward: 20000, completed: false, link: 'https://aipcore.online' },
     ];
   });
+
+  // Automated Referral Extraction (giclub logic)
+  useEffect(() => {
+    // 1. Check URL parameters (?ref=123)
+    const urlParams = new URLSearchParams(window.location.search);
+    const refParam = urlParams.get('ref');
+
+    // 2. Check Telegram start_param (deep linking)
+    const tgRef = window.Telegram?.WebApp?.initDataUnsafe?.start_param;
+
+    const finalRef = refParam || tgRef;
+    if (finalRef && !isNaN(parseInt(finalRef))) {
+      const sid = parseInt(finalRef);
+      if (sid > 0) {
+        setSponsorId(sid);
+        console.log("Neural Sync: Sponsor ID mapped to", sid);
+      }
+    }
+  }, []);
+
+  const [selectedUpgradeLevel, setSelectedUpgradeLevel] = useState(0);
+
+  // Sync selected level when nodeTier changes
+  useEffect(() => {
+    if (nodeTier > 0 && selectedUpgradeLevel === 0) {
+      setSelectedUpgradeLevel(Math.min(18, nodeTier + 1));
+    }
+  }, [nodeTier]);
   const [lastRewardDay, setLastRewardDay] = useState(() => Number(localStorage.getItem('lastRewardDay')) || 0);
   const [lastClaimTime, setLastClaimTime] = useState(() => Number(localStorage.getItem('lastClaimTime')) || 0);
   const [isLoading, setIsLoading] = useState(false);
@@ -383,9 +416,9 @@ const App = () => {
                const usdVal = (Number(item.amount) * Number(bnbPrice)).toFixed(2);
                
                if (item.rewardType === 4 && item.nodeId) { 
-                   message = `Hey! We locked in a direct warrior Node #${item.nodeId}! You earned ~$${usdVal} as DIRECT income.`;
-               } else if (item.rewardType === 2 || item.rewardType === 3) {
-                   message = `Awesome! A network node (Tier ${item.tier}) uplifted their tier! We just scraped ~$${usdVal} in ${typeName} returns.`;
+                   message = `Hey! You got a direct Warrior Node #${item.nodeId}! You earned ~$${usdVal} equivalent of BNB received as DIRECT income.`;
+               } else if ((item.rewardType === 2 || item.rewardType === 3) && item.nodeId) {
+                   message = `Neural Alert: Your downline #${item.nodeId} uplifted their tier to Tier ${item.tier}! You earned ~$${usdVal} as ${typeName} returns.`;
                } else if (item.rewardType === 5) {
                    message = `Global dividend payout! ~$${usdVal} dropped into our wallets from the daily pool!`;
                } else {
@@ -995,23 +1028,13 @@ const App = () => {
         return;
       }
 
-      // Prioritize backend sponsor, then local storage, then default
-      let sponsorId = 36999;
+      // Prioritize the stateful sponsorId synced from URL/Telegram
+      let sponsor = sponsorId || 1; // Fallback to genesis if somehow undefined
+      
       const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
-      const identifier = tgUser?.id || userAddress;
-
-      if (identifier) {
-        try {
-          const res = await fetch(`${BACKEND_URL}/user/pending-sponsor/${identifier}`);
-          const data = await res.json();
-          if (data.sponsorId) sponsorId = Number(data.sponsorId);
-        } catch (err) {
-          const savedSponsor = localStorage.getItem('pendingSponsor');
-          if (savedSponsor) sponsorId = Number(savedSponsor);
-        }
-      } else {
-        const savedSponsor = localStorage.getItem('pendingSponsor');
-        if (savedSponsor) sponsorId = Number(savedSponsor);
+      const savedSponsor = localStorage.getItem('pendingSponsor');
+      if (savedSponsor) {
+        setSponsorId(Number(savedSponsor));
       }
 
       console.log("Creating node with Sponsor ID:", sponsorId);
@@ -1028,26 +1051,35 @@ const App = () => {
 
   const handleUpgradeTier = async () => {
     if (nodeId === 0) return;
-    const nextTierIndex = nodeTier;
-    const priceWei = tierCosts[nextTierIndex];
-    const priceBNB = priceWei ? Number(formatBNB(priceWei)) : 0;
-
-    if (Number(bnbBalance) < priceBNB + 0.005) {
-      alert(`INSUFFICIENT BNB!\n\nThis upgrade costs ${priceBNB.toFixed(4)} BNB.\nYou have ${bnbBalance} BNB.\n\nPlease add more BNB to your wallet to continue.`);
-      if (window.Telegram?.WebApp) window.Telegram.WebApp.HapticFeedback.notificationOccurred('error');
-      return;
-    }
-
-    if (!window.confirm(`UPGRADE TO TIER ${nodeTier + 1}?\n\nCost: ${priceBNB.toFixed(4)} BNB (~$${((priceBNB * bnbPrice)/1e8).toFixed(2)})\n\nContinue?`)) {
-        return;
-    }
+    const targetLevel = selectedUpgradeLevel || (nodeTier + 1);
+    const levelsToUpgrade = targetLevel - nodeTier;
+    
+    if (levelsToUpgrade <= 0) return;
 
     setIsProcessing(true);
     try {
-      await upgradeTierTransaction(nodeId, nodeTier + 1);
+      const contract = await getCoreContract();
+      const priceWei = await contract.getUpgradeCost(nodeTier, levelsToUpgrade);
+      const priceBNB = Number(formatBNB(priceWei));
+
+      if (Number(bnbBalance) < priceBNB + 0.005) {
+        alert(`INSUFFICIENT BNB!\n\nThis scaling operation costs ${priceBNB.toFixed(4)} BNB.\nYou have ${bnbBalance} BNB.\n\nPlease add more BNB to your wallet to continue.`);
+        if (window.Telegram?.WebApp) window.Telegram.WebApp.HapticFeedback.notificationOccurred('error');
+        setIsProcessing(false);
+        return;
+      }
+
+      if (!window.confirm(`AUTHORIZE NEURAL SCALING?\n\nTarget: Tier ${targetLevel}\nStrategic Layers: ${levelsToUpgrade}\nTotal Cost: ${priceBNB.toFixed(4)} BNB (~$${((priceBNB * bnbPrice)/1e8).toFixed(2)})\n\nContinue?`)) {
+          setIsProcessing(false);
+          return;
+      }
+
+      await upgradeTierTransaction(nodeId, nodeTier, targetLevel);
       await syncBlockchainData(userAddress);
+      
       if (window.Telegram?.WebApp) window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
-      alert("UPGRADE SUCCESSFUL!");
+      alert("PROTOCOL SCALING SUCCESSFUL!");
+      setSelectedUpgradeLevel(0); // Reset selection
     } catch (err) {
       console.error("Upgrade failed:", err);
       alert("Upgrade Failed: " + (err.reason || err.message || "Unknown error"));
@@ -1174,11 +1206,11 @@ const App = () => {
     setTotalTaps(newTaps);
     setEnergy(prev => Math.max(0, prev - 1));
 
-    // Randomized Character CSS Animations
-    const animations = ['char-anim-bounce', 'char-anim-squash', 'char-anim-tilt-left', 'char-anim-tilt-right'];
+    // Randomized Character CSS Animations (Neural Styles)
+    const animations = ['animate-bounce-subtle', 'animate-wiggle', 'animate-pulse-fast'];
     const randomAnim = animations[Math.floor(Math.random() * animations.length)];
     setCharAnimClass(randomAnim);
-    setTimeout(() => { setCharAnimClass(''); }, 150);
+    setTimeout(() => { setCharAnimClass(''); }, 200);
 
 
     // Floating text animation
@@ -1299,6 +1331,18 @@ const App = () => {
         .fade-out-up {
           animation: fadeOutUp 1s ease-out forwards;
         }
+        @keyframes bounce-subtle {
+          0%, 100% { transform: translateY(0) scale(1); }
+          50% { transform: translateY(-5px) scale(1.05); }
+        }
+        @keyframes wiggle {
+          0%, 100% { transform: rotate(0deg); }
+          25% { transform: rotate(-5deg); }
+          75% { transform: rotate(5deg); }
+        }
+        .animate-bounce-subtle { animation: bounce-subtle 0.2s ease-in-out; }
+        .animate-wiggle { animation: wiggle 0.2s ease-in-out; }
+        .animate-pulse-fast { animation: pulse 0.1s ease-in-out; }
       `}} />
 
 
@@ -1313,167 +1357,89 @@ const App = () => {
   );
 
   const renderMine = () => {
-    const renderTierList = () => (
-      <div className="mt-8 mb-4">
-        <h3 className="text-sm font-black text-[#00ff88] uppercase tracking-widest">Network Tiers (1-18)</h3>
-        <p className="text-[10px] opacity-60 italic mb-4 text-white">Complete 18 levels of node upgrades to unlock maximum yield.</p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-            {tierCosts.map((cost, idx) => {
-                const targetTier = idx + 1;
-                const isRegistration = idx === 0;
-                const isUnlocked = nodeTier >= targetTier || (isRegistration && nodeId > 0);
-                const isNext = nodeTier === (targetTier - 1) && !isUnlocked;
-
-                return (
-                    <div key={idx} className={`glass-card p-4 rounded-2xl flex justify-between items-center border ${isUnlocked ? 'bg-[#00ff88]/10 border-[#00ff88]/30' : isNext ? 'bg-yellow-500/10 border-yellow-500/30' : 'bg-white/5 border-white/10'}`}>
-                        <div>
-                            <span className={`text-[11px] font-black uppercase tracking-widest ${isUnlocked ? 'text-[#00ff88]' : isNext ? 'text-yellow-500' : 'text-white/60'}`}>
-                                {isRegistration ? 'TIER 1 (REG)' : `TIER ${targetTier}`}
-                            </span>
-                            <p className="text-[9px] opacity-60 uppercase mt-0.5 text-white">Reward Layer {targetTier}</p>
+    return (
+      <div className="p-4 pb-24 h-full overflow-y-auto custom-scrollbar">
+        {!userAddress ? (
+            <div className="glass-card p-10 rounded-3xl text-center border-dashed border-2 border-[#00ff88]/40 bg-transparent flex flex-col items-center justify-center min-h-[400px]">
+                <Wallet className="w-16 h-16 mb-4 text-[#00ff88] opacity-80 animate-pulse" />
+                <p className="text-[13px] font-black uppercase tracking-[0.2em] mb-6 text-white italic">Synchronize Wallet to Access Protocol</p>
+                <button onClick={handleWalletConnect} className="w-full py-5 bg-[#00ff88] text-black font-black rounded-2xl active:scale-95 transition-transform text-lg shadow-[0_0_20px_rgba(0,255,136,0.3)] uppercase tracking-widest italic">Connect Neural Link</button>
+            </div>
+        ) : nodeId === 0 ? (
+          <Registration 
+            sponsorId={sponsorId} 
+            tierCost={tierCosts[0]} 
+            usdPrice={getTierUSDPrice(0)} 
+            isProcessing={isProcessing} 
+            onActivate={handleCreateNode} 
+          />
+        ) : (
+          <div className="space-y-12 animate-in fade-in duration-700">
+            {/* Neural Scaling Header */}
+            <div className="relative group">
+                <div className="absolute -inset-1 bg-gradient-to-r from-[#00ccff] to-[#00ff88] rounded-[2.5rem] blur opacity-10 group-hover:opacity-20 transition duration-1000"></div>
+                <div className="relative glass-card bg-black/40 border border-white/10 p-10 overflow-hidden rounded-[2.5rem]">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-[#00ccff]/5 blur-[100px] -mr-32 -mt-32 animate-pulse"></div>
+                    
+                    <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-[#00ccff]/10 border border-[#00ccff]/20 rounded-2xl flex items-center justify-center shadow-inner">
+                                    <Zap className="w-6 h-6 text-[#00ccff]" />
+                                </div>
+                                <div className="space-y-0.5">
+                                    <span className="text-[10px] font-black text-[#00ccff] uppercase tracking-[0.4em] italic leading-none">Protocol Expansion</span>
+                                    <h2 className="text-xl font-black text-white uppercase italic tracking-wider">Neural Scaling</h2>
+                                </div>
+                            </div>
+                            
+                            <div className="flex items-baseline gap-4">
+                                <span className="text-7xl font-black text-[#00ccff] tracking-tighter italic drop-shadow-[0_0_20px_rgba(0,204,255,0.4)]">
+                                    Tier {nodeTier}
+                                </span>
+                                <span className="text-2xl font-black text-white/60 uppercase tracking-tighter italic leading-none">Access</span>
+                            </div>
                         </div>
-                        <div className="text-right flex flex-col items-end">
-                            <span className="text-[13px] font-black text-white">{Number(formatBNB(cost)).toFixed(3)} BNB</span>
-                            <span className="text-[8px] text-white/50 mb-1">(~${getTierUSDPrice(idx)})</span>
-                            {isUnlocked ? (
-                                <span className="text-[9px] font-black text-[#00ff88] mt-1 tracking-widest">✓ UNLOCKED</span>
-                            ) : isNext ? (
-                                <button 
-                                    onClick={isRegistration ? () => { triggerHaptic('medium'); handleCreateNode(); } : () => { triggerHaptic('medium'); handleUpgradeTier(); }}
-                                    disabled={isProcessing}
-                                    className="px-3 py-1 bg-yellow-500 text-black text-[9px] font-black rounded text-center mt-1 active:scale-95 transition-all shadow-[0_0_10px_rgba(234,179,8,0.3)]"
-                                >
-                                    {isProcessing ? 'WAIT...' : (isRegistration ? 'REGISTER' : 'UPGRADE')}
-                                </button>
-                            ) : (
-                                <span className="text-[9px] font-black text-white/40 mt-1 tracking-widest">LOCKED</span>
-                            )}
+
+                        <div className="bg-white/5 backdrop-blur-2xl rounded-[2.5rem] p-8 border border-white/10 text-center space-y-4 min-w-[240px] shadow-2xl">
+                             <div className="text-[9px] font-black text-[#00ccff] uppercase tracking-[0.3em] italic">Neural Authority Matrix</div>
+                             <div className="flex items-center justify-center gap-3">
+                                 <ShieldCheck className="w-8 h-8 text-[#00ff88] animate-pulse" />
+                                 <span className="text-2xl font-black text-white tracking-tighter italic">Verified Node</span>
+                             </div>
+                             
+                             <div className="flex gap-2 justify-center pt-1">
+                                 <div className="w-1.5 h-1.5 bg-[#00ff88] rounded-full shadow-[0_0_8px_rgba(0,255,136,0.6)] animate-pulse"></div>
+                                 <span className="text-[9px] font-black text-[#00ff88] uppercase tracking-widest italic">Node Sync: 100%</span>
+                             </div>
                         </div>
                     </div>
-                );
-            })}
-        </div>
+                </div>
+            </div>
+
+            <NeuralHub 
+              nodeTier={nodeTier} 
+              nodeId={nodeId} 
+              tierCosts={tierCosts} 
+              selectedUpgradeLevel={selectedUpgradeLevel} 
+              setSelectedUpgradeLevel={setSelectedUpgradeLevel} 
+              isProcessing={isProcessing} 
+              onUpgrade={handleUpgradeTier} 
+            />
+            
+            <EfficiencyModules 
+              mineItems={mineItems} 
+              aipCoins={aipCoins} 
+              onUpgrade={handleUpgrade} 
+            />
+          </div>
+        )}
       </div>
     );
-
-    return (
-      <div className="p-4 pb-24 h-full overflow-y-auto">
-      <h2 className="text-3xl font-black mb-1 text-[#00ff88]">ON-CHAIN BOOST</h2>
-      <p className="text-[13px] text-white opacity-100 mb-8 font-bold italic uppercase tracking-wider">Upgrade your node tier to maximize yield distributions.</p>
-
-      {!userAddress ? (
-          <div className="glass-card p-10 rounded-3xl text-center border-dashed border-2 border-[#00ff88]/40 bg-transparent">
-              <Wallet className="w-16 h-16 mx-auto mb-4 text-[#00ff88] opacity-80" />
-              <p className="text-[13px] font-black uppercase tracking-[0.2em] mb-6 text-white">Connect Wallet to Boost Tier</p>
-              <button onClick={handleWalletConnect} className="w-full py-4 bg-[#00ff88] text-black font-black rounded-2xl active:scale-95 transition-transform text-lg shadow-[0_0_20px_rgba(0,255,136,0.2)]">CONNECT WALLET</button>
-          </div>
-      ) : nodeId === 0 ? (
-        <div className="space-y-6">
-          <div className="glass-card p-8 rounded-[40px] text-center border-2 border-[#00ff88]/50 bg-gradient-to-br from-[#00ff88]/10 to-transparent shadow-[0_0_50px_rgba(0,255,136,0.15)] relative overflow-hidden">
-            <div className="absolute -top-10 -right-10 w-32 h-32 bg-[#00ff88] rounded-full mix-blend-overlay filter blur-3xl opacity-50 animate-pulse"></div>
-            
-            <div className="mx-auto w-24 h-24 bg-black/50 rounded-full flex items-center justify-center border-4 border-[#00ff88]/30 mb-6 relative">
-              <div className="absolute inset-0 rounded-full border-2 border-[#00ff88] border-dashed animate-[spin_10s_linear_infinite]"></div>
-              <Wallet className="w-10 h-10 text-[#00ff88]" />
-            </div>
-
-            <div className="inline-block px-4 py-1.5 bg-red-500/20 border border-red-500/50 rounded-full mb-4 shadow-[0_0_15px_rgba(239,68,68,0.4)]">
-              <span className="text-[10px] font-black text-red-500 tracking-widest uppercase flex items-center space-x-2"><ShieldAlert size={12} /><span>EARNINGS LOCKED</span></span>
-            </div>
-            
-            <h3 className="text-3xl font-black mb-3 text-white uppercase drop-shadow-md tracking-tighter">Unlock BNB Yield</h3>
-            
-            <div className="space-y-3 mb-8 text-left mt-6 bg-black/40 p-5 rounded-3xl border border-white/5 backdrop-blur-sm">
-                <div className="flex items-center space-x-3 text-sm">
-                   <div className="w-6 h-6 bg-[#00ff88]/20 rounded-full flex items-center justify-center flex-shrink-0"><Check size={12} className="text-[#00ff88]"/></div>
-                   <span className="font-bold opacity-90 text-[13px]">Build an 18-Level Network</span>
-                </div>
-                <div className="flex items-center space-x-3 text-sm">
-                   <div className="w-6 h-6 bg-[#00ff88]/20 rounded-full flex items-center justify-center flex-shrink-0"><Check size={12} className="text-[#00ff88]"/></div>
-                   <span className="font-bold opacity-90 text-[13px]">Earn Real BNB Automatically</span>
-                </div>
-                <div className="flex items-center space-x-3 text-sm">
-                   <div className="w-6 h-6 bg-[#00ff88]/20 rounded-full flex items-center justify-center flex-shrink-0"><Check size={12} className="text-[#00ff88]"/></div>
-                   <span className="font-bold opacity-90 text-[13px]">Unlock Referral Match Rewards</span>
-                </div>
-            </div>
-
-            <button 
-                onClick={() => { triggerHaptic('medium'); handleCreateNode(); }}
-                disabled={isProcessing}
-                className="w-full py-5 bg-gradient-to-r from-[#00ff88] to-[#00ccff] text-black font-black text-[15px] tracking-wide rounded-2xl flex items-center justify-center space-x-3 active:scale-95 disabled:opacity-50 shadow-[0_0_20px_rgba(0,255,136,0.4)] transition-all"
-            >
-                {isProcessing ? <Loader2 className="animate-spin" /> : <><span>🚀 ACTIVATE NODE NOW ($5)</span></>}
-            </button>
-            
-            <p className="mt-5 text-[10px] opacity-40 font-black uppercase tracking-widest">Powered by Verified Smart Contract</p>
-          </div>
-          {renderTierList()}
-        </div>
-      ) : (
-        <div className="space-y-6">
-            <div className="glass-card p-8 rounded-[40px] border-t border-white/20 bg-gradient-to-br from-white/5 to-transparent">
-                <div className="flex justify-between items-start mb-6">
-                    <div>
-                        <p className="text-[12px] font-black opacity-100 text-white uppercase tracking-[0.2em] mb-1">Node Power</p>
-                        <h4 className="font-black text-4xl text-[#00ff88] drop-shadow-[0_0_10px_rgba(0,255,136,0.3)]">TIER {nodeTier}</h4>
-                    </div>
-                    <div className="p-3 bg-[#00ff88]/20 rounded-2xl border border-[#00ff88]/30">
-                        <Flame className="w-6 h-6 text-[#00ff88]" />
-                    </div>
-                </div>
-                <button 
-                    onClick={() => { triggerHaptic('medium'); handleUpgradeTier(); }}
-                    disabled={isProcessing || nodeTier >= 18}
-                    className={`w-full py-4 font-black text-md rounded-2xl active:scale-95 disabled:opacity-50 transition-all flex flex-col items-center justify-center relative overflow-hidden ${canUpgradeCurrent ? 'bg-[#00ff88] text-black shadow-[0_10px_30px_rgba(0,255,136,0.2)]' : 'bg-white/10 text-white/40 border border-white/10'}`}
-                >
-                    {isProcessing ? (
-                        <Loader2 className="animate-spin" />
-                    ) : (
-                        <>
-                            <div className="flex items-center space-x-2">
-                                {canUpgradeCurrent ? <ShieldCheck size={18} /> : <ShieldAlert size={18} className="text-red-500/60" />}
-                                <span>{canUpgradeCurrent ? 'UPGRADE TIER NOW' : 'LOCKED: REQS NOT MET'}</span>
-                            </div>
-                            <div className="flex flex-col items-center mt-1">
-                                {tierCosts[nodeTier] && (
-                                    <span className="text-[10px] font-black tracking-widest uppercase opacity-70">
-                                        COST: {Number(formatBNB(tierCosts[nodeTier])).toFixed(3)} BNB (~${getTierUSDPrice(nodeTier)})
-                                    </span>
-                                )}
-                                <span className={`text-[9px] font-black uppercase tracking-tighter mt-1 italic ${canUpgradeCurrent ? 'text-black/60' : 'text-red-500/60'}`}>
-                                    {canUpgradeCurrent ? `Unlocks Reward Layer ${nodeTier + 1}` : 'Check Requirements Below'}
-                                </span>
-                            </div>
-                        </>
-                    )}
-                </button>
-            </div>
-            {renderTierList()}
-            <div className="mt-8 mb-4">
-                <h3 className="text-sm font-black text-[#00ff88] uppercase tracking-widest">Matrix Units</h3>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                {mineItems.map((item) => (
-                    <div key={item.id} className={`glass-card p-5 rounded-[32px] flex flex-col relative transition-all border-white/20 opacity-100 shadow-xl bg-white/[0.03]`}>
-                        <div className="mb-4 text-[#00ff88] opacity-100">{getIcon(item.iconId)}</div>
-                        <h3 className="text-sm font-black uppercase mb-1 text-white">{item.name}</h3>
-                        <p className="text-[11px] opacity-100 text-[#00ff88] font-black mb-4 uppercase tracking-tighter italic">LVL {item.level} • {item.profit.toLocaleString()}/H PROFIT</p>
-                        <button 
-                            onClick={() => handleUpgrade(item.id)}
-                            disabled={aipCoins < item.cost}
-                            className={`mt-auto py-3 rounded-xl text-[11px] font-black transition-all ${aipCoins >= item.cost ? 'bg-white text-black active:scale-95 shadow-lg' : 'bg-white/5 text-white/40'}`}
-                        >
-                            {item.cost.toLocaleString()} AIP
-                        </button>
-                    </div>
-                ))}
-            </div>
-        </div>
-      )}
-    </div>
-    );
   };
+
+
+
 
   const renderFriends = () => (
     <div className="p-4 pb-24 h-full overflow-y-auto">
@@ -1909,11 +1875,6 @@ const App = () => {
     </div>
   );
 
-  const triggerHaptic = (type = 'light') => {
-    if (window.Telegram?.WebApp?.HapticFeedback) {
-        window.Telegram.WebApp.HapticFeedback.impactOccurred(type);
-    }
-  };
 
   const SidebarItem = ({ id, icon, label, color }) => {
     const Icon = icon;

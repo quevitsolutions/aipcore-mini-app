@@ -10,15 +10,42 @@ async function test() {
     const provider = new ethers.JsonRpcProvider('https://bsc-dataseed.binance.org/');
     const coreContract = new ethers.Contract(CORE_CONTRACT, abi, provider);
 
-    console.log("Testing nodes() output format...");
+    console.log("Simulating getNodeData...");
     
     try {
-        const nodeTuple = await coreContract.nodes(NODE_ID);
-        console.log("nodeTuple type:", typeof nodeTuple);
-        console.log("nodeTuple isArray:", Array.isArray(nodeTuple));
-        console.log("nodeTuple.nodeId:", nodeTuple.nodeId);
-        console.log("nodeTuple.wallet:", nodeTuple.wallet);
-        console.log("nodeTuple.tier:", nodeTuple.tier);
+        const [node, qualData] = await Promise.all([
+            coreContract.nodes(NODE_ID).catch((e) => {
+                console.log("nodes() failed:", e);
+                return null;
+            }),
+            coreContract.getPoolQualificationData(NODE_ID).catch((e) => {
+                console.log("getPoolQualificationData() failed:", e);
+                return null;
+            })
+        ]);
+
+        console.log("node:", node ? "EXISTS" : "NULL");
+        console.log("node wallet:", node?.wallet);
+        console.log("node === ethers.ZeroAddress:", node?.wallet === ethers.ZeroAddress);
+        
+        if (!node || node.wallet === ethers.ZeroAddress) {
+            console.log("RETURN NULL TRIGGGGRED!");
+        }
+
+        const directNodes = (qualData && qualData[1] !== undefined) ? Number(qualData[1]) : Number(node?.directNodes || 0);
+        const totalMatrixNodes = (qualData && qualData[5] !== undefined) ? Number(qualData[5]) : Number(node?.totalMatrixNodes || 0);
+        const qualTier  = (qualData && qualData[3] !== undefined) ? Number(qualData[3]) : 0;
+        const structTier = Number(node?.tier || 0);
+
+        const liveTier = Math.max(qualTier, structTier);
+
+        console.log({
+            wallet: node?.wallet,
+            tier: liveTier,
+            directNodes,
+            totalMatrixNodes
+        });
+
     } catch (e) {
         console.error(e.message);
     }

@@ -165,37 +165,40 @@ export const getWalletBalance = async (address) => {
     return "0.00";
   }
 };
-export const getNodeData = async (nodeId) => {
+export const getNodeData = async (nodeId, userAddress) => {
   try {
     const coreContract = await getCoreContract();
 
     // GICLUB SOURCE OF TRUTH: getPoolQualificationData[3] = currentLevel (tier)
-    // This is EXACTLY what GICLUB's useUserInfo hook fetches (useContract.ts line 12)
     const [node, qualData] = await Promise.all([
       coreContract.nodes(nodeId).catch(() => null),
       coreContract.getPoolQualificationData(nodeId).catch(() => null)
     ]);
 
-    if (!node || node.wallet === ethers.ZeroAddress) return null;
+    if (!node && !qualData) return null;
 
-    // Index 1 = directReferrals, Index 5 = matrixTeam, Index 3 = currentLevel
-    const directNodes = (qualData && qualData[1] !== undefined) ? Number(qualData[1]) : Number(node.directNodes || 0);
-    const totalMatrixNodes = (qualData && qualData[5] !== undefined) ? Number(qualData[5]) : Number(node.totalMatrixNodes || 0);
+    // Use array indices directly: 0 = wallet, 1 = id, 2 = sponsor, 5 = tier, 6 = directNodes, 7 = totalMatrixNodes, 8 = totalContribution
+    const nodeWallet = node ? node[0] : null;
+    
+    // If we only have node and it's zero address, not registered
+    if (node && nodeWallet === ethers.ZeroAddress) return null;
+
+    const directNodes = (qualData && qualData[1] !== undefined) ? Number(qualData[1]) : (node ? Number(node[6]) : 0);
+    const totalMatrixNodes = (qualData && qualData[5] !== undefined) ? Number(qualData[5]) : (node ? Number(node[7]) : 0);
     const qualTier  = (qualData && qualData[3] !== undefined) ? Number(qualData[3]) : 0;
-    const structTier = Number(node.tier || 0);
+    const structTier = node ? Number(node[5]) : 0;
 
-    // Take the higher value — qualTier is canonical per GICLUB logic
     const liveTier = Math.max(qualTier, structTier);
 
     return {
-      wallet: node.wallet,
-      nodeId: Number(node.nodeId),
-      sponsor: Number(node.sponsor),
+      wallet: nodeWallet || "0x0000000000000000000000000000000000000000",
+      nodeId: Number(nodeId),
+      sponsor: node ? Number(node[2]) : 0,
       tier: liveTier,
       directNodes,
       totalMatrixNodes,
-      joinedAt: Number(node.joinedAt),
-      totalContribution: formatBNB(node.totalContribution),
+      joinedAt: node ? Number(node[4]) : 0,
+      totalContribution: node ? formatBNB(node[8]) : "0.0",
     };
   } catch (error) {
     console.error("Error fetching node data:", error);
@@ -207,14 +210,13 @@ export const getNodeData = async (nodeId) => {
 export const getNodeTier = async (nodeId) => {
   try {
     const contract = await getCoreContract();
-    // GICLUB canonical: getPoolQualificationData[3] = currentLevel
     const qualData = await contract.getPoolQualificationData(nodeId);
     return Number(qualData[3]);
   } catch (err) {
     try {
       const contract = await getCoreContract();
       const node = await contract.nodes(nodeId);
-      return Number(node.tier);
+      return Number(node[5]); // strict array index for safety
     } catch {
       return 0;
     }

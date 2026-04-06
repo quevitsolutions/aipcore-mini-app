@@ -1710,7 +1710,9 @@ const App = () => {
                                 <UsernameDisplay nodeId={node.nodeId} wallet={node.wallet} />
                                 {explorerType === 'matrix' && <span className={`text-[7px] px-1.5 py-0.5 rounded-sm font-black uppercase tracking-tighter ${isDirect ? 'bg-[#00ff88] text-black' : isSpillover ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-400/20 text-blue-400'}`}>{isDirect ? 'Direct' : isSpillover ? 'Spillover' : 'Team'}</span>}</div><div className="flex items-center space-x-2 mt-1"><span className="text-[9px] px-2 py-0.5 rounded bg-white/5 text-white/40 font-black">SPONSOR {node.sponsor}</span><span className="text-[9px] px-2 py-0.5 rounded bg-[#00ff88]/20 text-[#00ff88] font-black">TIER {node.tier}</span></div></div></div><a href={`https://bscscan.com/address/${node.wallet}`} target="_blank" rel="noreferrer" className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center group-hover:bg-[#00ff88]/20 transition-colors"><ArrowUpRight size={14} className="opacity-40" /></a></div>
                         );
-                    }) : <div className="py-20 text-center opacity-30"><p className="text-xs font-black uppercase tracking-widest">No Nodes Found</p></div>}</div>
+                    }) : <div className="py-20 text-center opacity-30"><p className="text-xs font-black uppercase tracking-widest">No Nodes Found</p></div>}
+                        </div>
+                    )}
                 </div>
             )}
         </div>

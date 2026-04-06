@@ -69,6 +69,7 @@ import {
 import Registration from './components/Registration';
 import NeuralHub from './components/NeuralHub';
 import EfficiencyModules from './components/EfficiencyModules';
+import MatrixTree from './components/MatrixTree';
 
 const BACKEND_URL = import.meta.env.DEV ? 'http://localhost:5000/api' : '/api';
 
@@ -155,10 +156,12 @@ const App = () => {
   const [rewardPoolData, setRewardPoolData] = useState(null);
   const [globalPoolStats, setGlobalPoolStats] = useState(null);
   const [exploreView, setExploreView] = useState('overview'); // overview, explorer
+  const [explorerUIMode, setExplorerUIMode] = useState('list'); // list, tree
   const [explorerType, setExplorerType] = useState('matrix'); // matrix, direct
   const [explorerLevel, setExplorerLevel] = useState(1);
   const [explorerData, setExplorerData] = useState([]);
   const [explorerLoading, setExplorerLoading] = useState(false);
+  const [pathStack, setPathStack] = useState([]); // Array of { id, label } for breadcrumbs
   const [pendingWithdrawal, setPendingWithdrawal] = useState("0.0000");
   const [globalTransparency, setGlobalTransparency] = useState(null);
   const [poolDiagnostic, setPoolDiagnostic] = useState(null);
@@ -948,17 +951,35 @@ const App = () => {
     await modal.open();
   };
 
-  const fetchExplorerData = async (type, level) => {
-    if (!nodeId || nodeId <= 0) return;
+  const handleDrillDown = async (node) => {
+    if (!node || !node.nodeId) return;
+    triggerHaptic('medium');
+    
+    // Add target node to stack
+    const label = `Node #${node.nodeId}`;
+    setPathStack(prev => [...prev, { id: node.nodeId, label, type: explorerType, level: 1 }]);
+    setExplorerLevel(1); 
+  };
+
+  const handleNavigateUp = () => {
+    if (pathStack.length === 0) return;
+    triggerHaptic('light');
+    
+    setPathStack(prev => prev.slice(0, -1));
+    setExplorerLevel(1);
+  };
+
+  const fetchExplorerData = async (type, level, targetId = nodeId) => {
+    if (!targetId || targetId <= 0) return;
     setExplorerLoading(true);
     try {
       let data = [];
       if (type === 'matrix') {
-        const maxNodes = Math.pow(2, level);
-        data = await getMatrixTreeNodes(nodeId, level, maxNodes);
+        const maxNodes = 2; // Only fetch the immediate next layer for the tree
+        data = await getMatrixTreeNodes(targetId, level, maxNodes);
       } else {
         const count = level === 1 ? (onchainStats?.directNodes || 20) : 50;
-        data = await getUnilevelTreeNodes(nodeId, level, count);
+        data = await getUnilevelTreeNodes(targetId, level, count);
       }
       setExplorerData(data);
     } catch (err) {
@@ -970,9 +991,10 @@ const App = () => {
 
   useEffect(() => {
     if (exploreView === 'explorer') {
-      fetchExplorerData(explorerType, explorerLevel);
+      const activeRootId = pathStack.length > 0 ? pathStack[pathStack.length - 1].id : nodeId;
+      fetchExplorerData(explorerType, explorerLevel, activeRootId);
     }
-  }, [exploreView, explorerType, explorerLevel, nodeId]);
+  }, [exploreView, explorerType, explorerLevel, nodeId, pathStack]);
 
   const handleWalletDisconnect = async () => {
     const modal = getAppKitModal();
@@ -1608,8 +1630,78 @@ const App = () => {
                 </div>
             ) : (
                 <div className="space-y-6 pb-24">
-                    <div className="space-y-4"><div className="flex space-x-2"><button onClick={() => setExplorerType('matrix')} className={`flex-1 py-3 border rounded-xl text-[9px] font-black transition-all ${explorerType === 'matrix' ? 'border-[#00ff88] bg-[#00ff88]/10 text-[#00ff88]' : 'border-white/5 opacity-40'}`}>2X2 MATRIX</button><button onClick={() => setExplorerType('direct')} className={`flex-1 py-3 border rounded-xl text-[9px] font-black transition-all ${explorerType === 'direct' ? 'border-[#00ff88] bg-[#00ff88]/10 text-[#00ff88]' : 'border-white/5 opacity-40'}`}>DIRECT TEAM</button></div><div className="flex space-x-2 overflow-x-auto pb-4 no-scrollbar">{[...Array(18)].map((_, i) => (<button key={i} onClick={() => setExplorerLevel(i + 1)} className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black transition-all ${explorerLevel === i + 1 ? 'bg-[#00ff88] text-black shadow-[0_0_15px_rgba(0,255,136,0.5)]' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}>{i+1}</button>))}</div></div>
-                    <div className="space-y-3"><div className="flex justify-between items-center text-[10px] font-black opacity-30 uppercase tracking-widest mb-2 px-2"><span>{explorerType === 'matrix' ? `Layer ${explorerLevel}` : 'Personal Directs'}</span><span className="text-[#00ff88]">{explorerData.length} Results</span></div>
+                    {/* Explorer Mode Toggle */}
+                    <div className="flex bg-white/5 p-1 rounded-2xl mb-4">
+                        <button 
+                            onClick={() => { setExplorerUIMode('list'); triggerHaptic('light'); }} 
+                            className={`flex-1 py-2.5 rounded-xl text-[9px] font-black tracking-[0.2em] transition-all flex items-center justify-center space-x-2 ${explorerUIMode === 'list' ? 'bg-white/10 text-[#00ff88]' : 'opacity-30'}`}
+                        >
+                            <span>LIST VIEW</span>
+                        </button>
+                        <button 
+                            onClick={() => { setExplorerUIMode('tree'); triggerHaptic('light'); }} 
+                            className={`flex-1 py-2.5 rounded-xl text-[9px] font-black tracking-[0.2em] transition-all flex items-center justify-center space-x-2 ${explorerUIMode === 'tree' ? 'bg-white/10 text-[#00ff88]' : 'opacity-30'}`}
+                        >
+                            <Zap size={12} />
+                            <span>BRAIN TREE</span>
+                        </button>
+                    </div>
+
+                    {/* Breadcrumbs */}
+                    {pathStack.length > 0 && (
+                        <div className="flex items-center space-x-2 overflow-x-auto no-scrollbar pb-2 mb-2">
+                            <button 
+                                onClick={() => { setPathStack([]); setExplorerLevel(1); triggerHaptic('medium'); }}
+                                className="text-[9px] font-black text-[#00ff88] uppercase tracking-widest whitespace-nowrap px-3 py-1 bg-[#00ff88]/10 rounded-full border border-[#00ff88]/20"
+                            >
+                                MY NODE
+                            </button>
+                            {pathStack.map((crumb, idx) => (
+                                <React.Fragment key={idx}>
+                                    <span className="text-white/20">/</span>
+                                    <button 
+                                        onClick={() => {
+                                            setPathStack(prev => prev.slice(0, idx + 1));
+                                            triggerHaptic('light');
+                                        }}
+                                        className="text-[9px] font-black text-white/40 uppercase tracking-widest whitespace-nowrap"
+                                    >
+                                        {crumb.label}
+                                    </button>
+                                </React.Fragment>
+                            ))}
+                        </div>
+                    )}
+
+                    <div className="space-y-4">
+                        <div className="flex space-x-2">
+                            <button onClick={() => setExplorerType('matrix')} className={`flex-1 py-3 border rounded-xl text-[9px] font-black transition-all ${explorerType === 'matrix' ? 'border-[#00ff88] bg-[#00ff88]/10 text-[#00ff88]' : 'border-white/5 opacity-40'}`}>2X2 MATRIX</button>
+                            <button onClick={() => setExplorerType('direct')} className={`flex-1 py-3 border rounded-xl text-[9px] font-black transition-all ${explorerType === 'direct' ? 'border-[#00ff88] bg-[#00ff88]/10 text-[#00ff88]' : 'border-white/5 opacity-40'}`}>DIRECT TEAM</button>
+                        </div>
+                        {explorerUIMode === 'list' && (
+                            <div className="flex space-x-2 overflow-x-auto pb-4 no-scrollbar">
+                                {[...Array(18)].map((_, i) => (
+                                    <button key={i} onClick={() => setExplorerLevel(i + 1)} className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-[10px] font-black transition-all ${explorerLevel === i + 1 ? 'bg-[#00ff88] text-black shadow-[0_0_15px_rgba(0,255,136,0.5)]' : 'bg-white/5 text-white/40 hover:bg-white/10'}`}>{i+1}</button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {explorerUIMode === 'tree' ? (
+                        <div className="glass-card rounded-[40px] border-white/5 bg-black/40 overflow-hidden">
+                             <MatrixTree 
+                                rootNode={{ nodeId: pathStack.length > 0 ? pathStack[pathStack.length-1].id : nodeId, tier: nodeTier }} 
+                                children={explorerData} 
+                                loading={explorerLoading}
+                                onDrillDown={handleDrillDown}
+                             />
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            <div className="flex justify-between items-center text-[10px] font-black opacity-30 uppercase tracking-widest mb-2 px-2">
+                                <span>{explorerType === 'matrix' ? `Layer ${explorerLevel}` : 'Personal Directs'}</span>
+                                <span className="text-[#00ff88]">{explorerData.length} Results</span>
+                            </div>
                     {explorerLoading ? <div className="py-20 flex justify-center"><Loader2 className="animate-spin text-[#00ff88]" size={32} /></div> : explorerData.length > 0 ? explorerData.map((node) => {
                         const isDirect = node.sponsor === nodeId;
                         const isSpillover = node.sponsor < nodeId;

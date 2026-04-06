@@ -366,12 +366,6 @@ const App = () => {
             setOnchainStats(data);
             syncUserToBackend(coinsRef.current, tapsRef.current, id, unifiedTier, telegramUser, data?.directNodes || 0);
           } else {
-            // Safety fallback to prevent 0 counts if getNodeData fails but we have pool tier
-            setOnchainStats({
-              directNodes: pData ? Number(pData.missingRequirements?.[1] || 0) : 0, // Approximate fallback
-              totalMatrixNodes: 0,
-              tier: unifiedTier
-            });
             syncUserToBackend(coinsRef.current, tapsRef.current, id, unifiedTier, telegramUser, 0);
           }
 

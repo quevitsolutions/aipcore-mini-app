@@ -10,19 +10,16 @@ async function test() {
     const provider = new ethers.JsonRpcProvider('https://bsc-dataseed.binance.org/');
     const coreContract = new ethers.Contract(CORE_CONTRACT, abi, provider);
 
-    console.log("Testing getNode vs nodes for NODE #36999...");
+    console.log("Testing nodes() output format...");
     
     try {
-        console.log("\nCalling coreContract.nodes(36999)...");
         const nodeTuple = await coreContract.nodes(NODE_ID);
-        console.log("SUCCESS! nodes() output [1]:", Number(nodeTuple[1]));
-
-        console.log("\nCalling coreContract.getNode(36999)...");
-        const nodeStruct = await coreContract.getNode(NODE_ID);
-        console.log("SUCCESS! getNode() output nodeId:", Number(nodeStruct.nodeId));
-
+        console.log("nodeTuple type:", typeof nodeTuple);
+        console.log("nodeTuple isArray:", Array.isArray(nodeTuple));
+        console.log("nodeTuple.nodeId:", nodeTuple.nodeId);
+        console.log("nodeTuple.wallet:", nodeTuple.wallet);
+        console.log("nodeTuple.tier:", nodeTuple.tier);
     } catch (e) {
-        console.log("\nFAILED! Error calling coreContract.getNode(36999):");
         console.error(e.message);
     }
 }

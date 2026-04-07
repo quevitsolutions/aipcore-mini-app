@@ -14,7 +14,6 @@ import {
   Settings as SettingsIcon,
   Search,
   ExternalLink,
-  ShieldAlert,
   Loader2,
   ShieldCheck,
   Camera,
@@ -1248,9 +1247,15 @@ const App = () => {
       }
 
       if (currentDaily >= 20) {
-        setShowRegisterPrompt(true);
+        // Load the last-clicked sponsor from storage before redirecting
+        const savedSponsor = localStorage.getItem('pendingSponsor');
+        if (savedSponsor && !isNaN(parseInt(savedSponsor))) {
+          setSponsorId(parseInt(savedSponsor));
+        }
+        // Direct redirect to registration — no popup, no friction
+        setCurrentView('mine');
         if (window.Telegram?.WebApp) {
-          window.Telegram.WebApp.HapticFeedback.notificationOccurred('error');
+          window.Telegram.WebApp.HapticFeedback.notificationOccurred('warning');
         }
         return;
       }
@@ -1426,13 +1431,30 @@ const App = () => {
                 <button onClick={handleWalletConnect} className="w-full py-5 bg-[#00ff88] text-black font-black rounded-2xl active:scale-95 transition-transform text-lg shadow-[0_0_20px_rgba(0,255,136,0.3)] uppercase tracking-widest italic">Connect Neural Link</button>
             </div>
         ) : nodeId === 0 ? (
-          <Registration 
-            sponsorId={sponsorId} 
-            tierCost={tierCosts[0]} 
-            usdPrice={getTierUSDPrice(0)} 
-            isProcessing={isProcessing} 
-            onActivate={handleCreateNode} 
-          />
+          <div>
+            {/* Daily Limit Banner — shown when user was redirected after hitting 20 coins */}
+            {dailyUnregisteredCoins >= 20 && (
+              <div className="mb-5 rounded-[1.5rem] border border-orange-500/40 bg-gradient-to-r from-orange-500/10 to-transparent p-4 flex items-start gap-3 relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-orange-500/60 via-orange-400 to-transparent" />
+                <div className="w-8 h-8 shrink-0 bg-orange-500/20 rounded-xl flex items-center justify-center mt-0.5">
+                  <Zap size={16} className="text-orange-400" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-black text-orange-400 uppercase tracking-widest mb-1">Daily Limit Reached</p>
+                  <p className="text-[11px] text-white/60 font-bold leading-relaxed">
+                    You hit the <span className="text-orange-400 font-black">20 coin</span> guest limit. Activate your Warrior Node below to unlock <span className="text-white font-black">unlimited tapping</span> and start earning real BNB.
+                  </p>
+                </div>
+              </div>
+            )}
+            <Registration 
+              sponsorId={sponsorId} 
+              tierCost={tierCosts[0]} 
+              usdPrice={getTierUSDPrice(0)} 
+              isProcessing={isProcessing} 
+              onActivate={handleCreateNode} 
+            />
+          </div>
         ) : (
           <div className="space-y-12 animate-in fade-in duration-700">
             {/* Neural Scaling Header */}
@@ -2229,57 +2251,7 @@ const App = () => {
           </div>
       </aside>
 
-      {showRegisterPrompt && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center p-6 backdrop-blur-md bg-black/60 animate-in fade-in zoom-in duration-300 font-black italic">
-          <div className="glass-card max-w-sm w-full p-8 rounded-[2.5rem] border-[#00ff88]/30 shadow-[0_0_50px_rgba(0,255,136,0.2)] text-center relative overflow-hidden">
-            {/* Animated Scanning Beam */}
-            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#00ff88] to-transparent opacity-50"></div>
-            
-            {/* Icon Group */}
-            <div className="w-16 h-16 bg-[#00ff88]/10 rounded-2xl flex items-center justify-center mx-auto mb-6 border border-[#00ff88]/20 relative">
-              <ShieldAlert className="w-8 h-8 text-[#00ff88]" />
-              <div className="absolute -inset-2 bg-[#00ff88]/20 blur-xl rounded-full animate-pulse"></div>
-            </div>
-            
-            {/* Typography */}
-            <h3 className="text-2xl font-black text-white uppercase tracking-tighter mb-2 italic">Neural Limit</h3>
-            <p className="text-[11px] font-black text-[#00ff88] uppercase tracking-[0.4em] mb-6 opacity-80 border-b border-[#00ff88]/20 pb-2">Guest Protocol Exhausted</p>
-            
-            {/* Context Box */}
-            <div className="bg-white/5 rounded-2xl p-5 mb-8 border border-white/5 text-center relative">
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#00ff88]/40 rounded-l-2xl"></div>
-              <p className="text-[13px] font-bold text-white/70 leading-relaxed italic">
-                Strategic limit reached. Your unregistered guest node is capped at <span className="text-[#00ff88] font-black underline decoration-2 underline-offset-4">20 daily units</span>. 
-                <br/><br/>
-                Activate a <span className="text-white font-black">Warrior Node</span> now to synchronize with the main matrix and secure your BNB yield.
-              </p>
-            </div>
-            
-            {/* Strategic Call to Action */}
-            <div className="space-y-3">
-              <button 
-                onClick={() => {
-                  setShowRegisterPrompt(false);
-                  setCurrentView('mine');
-                  triggerHaptic('success');
-                }}
-                className="w-full py-5 bg-[#00ff88] text-black font-black rounded-2xl text-[12px] uppercase tracking-[0.2em] shadow-[0_0_30px_rgba(0,255,136,0.3)] active:scale-95 transition-all italic hover:shadow-[0_0_40px_rgba(0,255,136,0.5)]"
-              >
-                Go to Registration Node
-              </button>
-              <button 
-                onClick={() => {
-                    setShowRegisterPrompt(false);
-                    triggerHaptic('light');
-                }}
-                className="w-full py-4 bg-white/5 text-white/30 font-black rounded-2xl text-[10px] uppercase tracking-[0.3em] hover:text-white/60 hover:bg-white/10 transition-all italic"
-              >
-                Dismiss for Now
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Register prompt removed — tap limit now auto-redirects to Mine/Registration tab */}
     </div>
   );
 };

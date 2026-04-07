@@ -1436,18 +1436,18 @@ const App = () => {
     return (
       <div className="p-4 pb-24 h-full overflow-y-auto custom-scrollbar">
         {nodeId === 0 ? (
-          <div>
-            {/* Daily Limit Banner — shown when user was redirected after hitting 20 coins */}
+          <div className="space-y-6">
+            {/* Daily Limit Banner — restyled for Gold/Red */}
             {dailyUnregisteredCoins >= 20 && (
-              <div className="mb-5 rounded-[1.5rem] border border-orange-500/40 bg-gradient-to-r from-orange-500/10 to-transparent p-4 flex items-start gap-3 relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-0.5 bg-gradient-to-r from-orange-500/60 via-orange-400 to-transparent" />
-                <div className="w-8 h-8 shrink-0 bg-orange-500/20 rounded-xl flex items-center justify-center mt-0.5">
-                  <Zap size={16} className="text-orange-400" />
+              <div className="mb-6 rounded-[2rem] border-2 border-[#FF0000]/40 bg-black p-6 flex items-start gap-4 shadow-[0_0_20px_rgba(255,0,0,0.15)] relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-[3px] bg-gradient-to-r from-[#FF0000] via-white to-transparent" />
+                <div className="w-10 h-10 shrink-0 bg-[#FF0000]/10 border border-[#FF0000]/30 rounded-2xl flex items-center justify-center">
+                  <Zap size={20} className="text-[#FF0000] animate-pulse" />
                 </div>
                 <div>
-                  <p className="text-[11px] font-black text-orange-400 uppercase tracking-widest mb-1">Daily Limit Reached</p>
-                  <p className="text-[11px] text-white/60 font-bold leading-relaxed">
-                    You hit the <span className="text-orange-400 font-black">20 coin</span> guest limit. Activate your Warrior Node below to unlock <span className="text-white font-black">unlimited tapping</span> and start earning real BNB.
+                  <p className="text-xs font-black text-[#FF0000] uppercase tracking-[0.2em] mb-1 italic">Expansion Halted</p>
+                  <p className="text-[11px] text-white font-bold leading-relaxed">
+                    You have reached the <span className="text-[#FF0000] font-black underline">20 AIP Limit</span> for guest nodes. Authorize your Warrior Node below to unlock <span className="text-[#FFD700] font-black uppercase">unlimited matrix tapping</span> and secure your BNB yield.
                   </p>
                 </div>
               </div>
@@ -1463,44 +1463,48 @@ const App = () => {
             />
           </div>
         ) : (
-          <div className="space-y-12 animate-in fade-in duration-700">
-            {/* Neural Scaling Header */}
+          <div className="space-y-12 pb-12">
+            {/* Elite Matrix Header */}
             <div className="relative group">
-                <div className="absolute -inset-1 bg-gradient-to-r from-[#00ccff] to-[#00ff88] rounded-[2.5rem] blur opacity-10 group-hover:opacity-20 transition duration-1000"></div>
-                <div className="relative glass-card bg-black/40 border border-white/10 p-10 overflow-hidden rounded-[2.5rem]">
-                    <div className="absolute top-0 right-0 w-64 h-64 bg-[#00ccff]/5 blur-[100px] -mr-32 -mt-32 animate-pulse"></div>
+                <div className="absolute -inset-1 bg-gradient-to-r from-[#FFD700] to-[#00FF00] rounded-[2.5rem] blur opacity-20 group-hover:opacity-40 transition duration-1000"></div>
+                <div className="relative glass-card bg-black border border-[#FFD700]/30 p-10 overflow-hidden rounded-[2.5rem] shadow-2xl">
+                    <div className="absolute top-0 right-0 w-64 h-64 bg-[#FFD700]/10 blur-[100px] -mr-32 -mt-32"></div>
                     
-                    <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8">
+                    <div className="relative z-10 flex flex-col md:flex-row justify-between items-center gap-8 text-center md:text-left">
                         <div className="space-y-6">
-                            <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-[#00ccff]/10 border border-[#00ccff]/20 rounded-2xl flex items-center justify-center shadow-inner">
-                                    <Zap className="w-6 h-6 text-[#00ccff]" />
+                            <div className="flex flex-col md:flex-row items-center gap-6">
+                                <div className="w-16 h-16 bg-[#FFD700]/10 border-2 border-[#FFD700]/40 rounded-3xl flex items-center justify-center shadow-[0_0_30px_rgba(255,215,0,0.2)]">
+                                    <Zap className="w-8 h-8 text-[#FFD700] animate-pulse" />
                                 </div>
-                                <div className="space-y-0.5">
-                                    <span className="text-[10px] font-black text-[#00ccff] uppercase tracking-[0.4em] italic leading-none">Protocol Expansion</span>
-                                    <h2 className="text-xl font-black text-white uppercase italic tracking-wider">Neural Scaling</h2>
+                                <div>
+                                    <h1 className="text-4xl font-black text-white italic tracking-tighter uppercase leading-tight mb-1">
+                                        WARRIOR <span className="text-[#FFD700]">T-{nodeTier}</span>
+                                    </h1>
+                                    <div className="flex items-center justify-center md:justify-start gap-3">
+                                       <span className="w-2 h-2 bg-[#00FF00] rounded-full shadow-[0_0_10px_#00FF00] animate-pulse" />
+                                       <span className="text-[10px] font-black text-[#00FF00] uppercase tracking-[0.4em] italic leading-none">ACTIVE NODE CORE</span>
+                                    </div>
                                 </div>
                             </div>
                             
-                            <div className="flex items-baseline gap-4">
-                                <span className="text-7xl font-black text-[#00ccff] tracking-tighter italic drop-shadow-[0_0_20px_rgba(0,204,255,0.4)]">
-                                    Tier {nodeTier}
-                                </span>
-                                <span className="text-2xl font-black text-white/60 uppercase tracking-tighter italic leading-none">Access</span>
+                            <div className="flex flex-wrap items-center justify-center md:justify-start gap-4">
+                                <div className="bg-black border border-[#FFD700]/30 px-6 py-3 rounded-2xl shadow-xl">
+                                    <p className="text-[9px] font-black text-[#FFD700] uppercase tracking-widest mb-1 italic leading-none">Matrix Yield</p>
+                                    <p className="text-xl font-black text-[#00FF00] italic leading-none">+{nodeTier * 1.5}% <span className="text-[10px] text-white">PWR</span></p>
+                                </div>
+                                <div className="bg-black border border-[#00FF00]/30 px-6 py-3 rounded-2xl shadow-xl">
+                                    <p className="text-[9px] font-black text-[#00FF00] uppercase tracking-widest mb-1 italic leading-none">CodeUnits</p>
+                                    <p className="text-xl font-black text-white italic leading-none">{nodeTier * 12} <span className="text-[10px] text-[#FFD700]">UNITS</span></p>
+                                </div>
                             </div>
                         </div>
 
-                        <div className="bg-white/5 backdrop-blur-2xl rounded-[2.5rem] p-8 border border-white/10 text-center space-y-4 min-w-[240px] shadow-2xl">
-                             <div className="text-[9px] font-black text-[#00ccff] uppercase tracking-[0.3em] italic">Neural Authority Matrix</div>
-                             <div className="flex items-center justify-center gap-3">
-                                 <ShieldCheck className="w-8 h-8 text-[#00ff88] animate-pulse" />
-                                 <span className="text-2xl font-black text-white tracking-tighter italic">Verified Node</span>
-                             </div>
-                             
-                             <div className="flex gap-2 justify-center pt-1">
-                                 <div className="w-1.5 h-1.5 bg-[#00ff88] rounded-full shadow-[0_0_8px_rgba(0,255,136,0.6)] animate-pulse"></div>
-                                 <span className="text-[9px] font-black text-[#00ff88] uppercase tracking-widest italic">Node Sync: 100%</span>
-                             </div>
+                        <div className="flex flex-col items-center justify-center p-8 bg-black border-2 border-[#FFD700]/20 rounded-[2.5rem] shadow-inner group-hover:border-[#FFD700]/40 transition-all">
+                            <Users className="w-8 h-8 text-[#FFD700] mb-4" />
+                            <div className="text-center">
+                                <p className="text-[10px] font-black text-white uppercase tracking-[0.3em] mb-1 italic leading-none">Node Authority</p>
+                                <p className="text-3xl font-black text-[#FFD700] italic uppercase leading-none tracking-tighter">ELITE CLASS</p>
+                            </div>
                         </div>
                     </div>
                 </div>

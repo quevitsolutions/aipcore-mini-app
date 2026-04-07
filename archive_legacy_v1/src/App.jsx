@@ -540,16 +540,14 @@ const App = () => {
         localStorage.setItem('pendingSponsor', startParam);
         console.log("Captured Referral Sponsor (Telegram):", startParam);
         
-        console.log("Captured Referral Sponsor (Web):", webRef);
-        
         fetch(`${BACKEND_URL}/referrals/click`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            referrer_id: webRef,
-            guest_username: "Web Guest"
+            referrer_id: startParam,
+            guest_username: "Telegram Guest"
           })
-        }).catch(err => console.error("Web guest record failed:", err));
+        }).catch(err => console.error("Referral click record failed:", err));
       }
     }
 

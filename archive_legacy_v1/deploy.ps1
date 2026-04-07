@@ -9,13 +9,14 @@ Write-Host "Please ensure 'dist' is built if not already present." -ForegroundCo
 # Write-Host "[1/4] Building Frontend..." -ForegroundColor Gray
 # npm run build
 
-Write-Host "[1/2] Pushing local changes to GitHub..." -ForegroundColor Gray
+Write-Host "[1/2] Syncing changes to GitHub..." -ForegroundColor Gray
 git add .
-git commit -m "deploy: migrate to docker build + git sync"
+git commit -m "deploy: final registration fixes + matrix structure sync"
 git push origin main
 
 Write-Host "[2/2] Updating VPS and Orchestrating Docker..." -ForegroundColor Gray
-ssh ${VPS_USER}@${VPS_IP} "cd ${REMOTE_DIR} && git pull origin main && docker compose down && docker compose up -d --build"
+# Note: We CD into the specific subdirectory where the Docker config now lives
+ssh ${VPS_USER}@${VPS_IP} "cd ${REMOTE_DIR} && git pull origin main && cd archive_legacy_v1 && docker compose down && docker compose up -d --build"
 
 # 4. Final Cleanup
 Write-Host "[4/4] Verifying Containers..." -ForegroundColor Gray

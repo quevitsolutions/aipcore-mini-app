@@ -1062,22 +1062,31 @@ const App = () => {
              buttons: [{ type: 'ok' }]
            });
         }
+        // Navigate home immediately since node already exists
+        setCurrentView('home');
         return;
       }
 
-      // Prioritize the stateful sponsorId synced from URL/Telegram
-      let sponsor = sponsorId || 1; // Fallback to genesis if somehow undefined
-      
-      const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+      // Resolve sponsor: prefer live state, then localStorage fallback
       const savedSponsor = localStorage.getItem('pendingSponsor');
-      if (savedSponsor) {
-        setSponsorId(Number(savedSponsor));
+      const finalSponsor = savedSponsor ? Number(savedSponsor) : (sponsorId || 1);
+      if (savedSponsor) setSponsorId(finalSponsor);
+
+      console.log("Creating node with Sponsor ID:", finalSponsor);
+      await createNodeTransaction(finalSponsor);
+      await syncBlockchainData(userAddress);
+
+      if (window.Telegram?.WebApp) {
+        window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
       }
 
-      console.log("Creating node with Sponsor ID:", sponsorId);
-      await createNodeTransaction(sponsorId);
-      await syncBlockchainData(userAddress);
-      if (window.Telegram?.WebApp) window.Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+      // Clear guest tap limits now that the user is registered
+      localStorage.removeItem('dailyUnregisteredCoins');
+      localStorage.removeItem('lastDailyTapDate');
+      setDailyUnregisteredCoins(0);
+
+      // Navigate back to home so they see their live node dashboard
+      setCurrentView('home');
     } catch (err) {
       console.error("Create Node failed:", err);
       if (window.Telegram?.WebApp) window.Telegram.WebApp.HapticFeedback.notificationOccurred('error');
@@ -1253,6 +1262,7 @@ const App = () => {
           setSponsorId(parseInt(savedSponsor));
         }
         // Direct redirect to registration — no popup, no friction
+        // NOTE: return early — do NOT add coins or energy drain on the redirect tap
         setCurrentView('mine');
         if (window.Telegram?.WebApp) {
           window.Telegram.WebApp.HapticFeedback.notificationOccurred('warning');
@@ -1260,6 +1270,7 @@ const App = () => {
         return;
       }
       
+      // Track daily taps BEFORE adding coins (so the 20th tap is the last allowed)
       const newDaily = currentDaily + tapValue;
       setDailyUnregisteredCoins(newDaily);
       localStorage.setItem('dailyUnregisteredCoins', String(newDaily));
@@ -1424,13 +1435,7 @@ const App = () => {
   const renderMine = () => {
     return (
       <div className="p-4 pb-24 h-full overflow-y-auto custom-scrollbar">
-        {!userAddress ? (
-            <div className="glass-card p-10 rounded-3xl text-center border-dashed border-2 border-[#00ff88]/40 bg-transparent flex flex-col items-center justify-center min-h-[400px]">
-                <Wallet className="w-16 h-16 mb-4 text-[#00ff88] opacity-80 animate-pulse" />
-                <p className="text-[13px] font-black uppercase tracking-[0.2em] mb-6 text-white italic">Synchronize Wallet to Access Protocol</p>
-                <button onClick={handleWalletConnect} className="w-full py-5 bg-[#00ff88] text-black font-black rounded-2xl active:scale-95 transition-transform text-lg shadow-[0_0_20px_rgba(0,255,136,0.3)] uppercase tracking-widest italic">Connect Neural Link</button>
-            </div>
-        ) : nodeId === 0 ? (
+        {nodeId === 0 ? (
           <div>
             {/* Daily Limit Banner — shown when user was redirected after hitting 20 coins */}
             {dailyUnregisteredCoins >= 20 && (
@@ -1452,7 +1457,9 @@ const App = () => {
               tierCost={tierCosts[0]} 
               usdPrice={getTierUSDPrice(0)} 
               isProcessing={isProcessing} 
-              onActivate={handleCreateNode} 
+              onActivate={handleCreateNode}
+              userAddress={userAddress}
+              onConnectWallet={handleWalletConnect}
             />
           </div>
         ) : (

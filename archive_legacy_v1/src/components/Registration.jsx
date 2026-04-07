@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Zap, ShieldCheck, Loader2, Info, ChevronRight } from 'lucide-react';
+import { Zap, ShieldCheck, Loader2, Info, ChevronRight, Wallet } from 'lucide-react';
 import { formatBNB } from '../utils/web3';
 
 const Registration = ({ 
@@ -8,7 +8,9 @@ const Registration = ({
   tierCost, 
   usdPrice, 
   isProcessing, 
-  onActivate 
+  onActivate,
+  userAddress,
+  onConnectWallet
 }) => {
   const breakdown = [
     { label: 'Direct Reward Logic', pct: '10%', color: '#00ff88' },
@@ -22,9 +24,7 @@ const Registration = ({
     show: {
       opacity: 1,
       y: 0,
-      transition: {
-        staggerChildren: 0.1
-      }
+      transition: { staggerChildren: 0.08 }
     }
   };
 
@@ -40,8 +40,11 @@ const Registration = ({
       animate="show"
       className="relative overflow-hidden bg-black/60 backdrop-blur-3xl border border-white/10 shadow-2xl rounded-[3rem] p-8 max-w-lg mx-auto"
     >
-      <div className="absolute top-0 right-0 w-64 h-64 bg-[#00ff88]/5 blur-[100px] -mr-32 -mt-32"></div>
-      
+      {/* Glow */}
+      <div className="absolute top-0 right-0 w-64 h-64 bg-[#00ff88]/5 blur-[100px] -mr-32 -mt-32 pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-48 h-48 bg-[#00ccff]/5 blur-[80px] -ml-24 -mb-24 pointer-events-none" />
+
+      {/* Header */}
       <div className="flex justify-between items-start mb-6">
         <div>
           <h1 className="text-3xl font-black mb-1 uppercase tracking-tighter italic text-[#00ff88]">
@@ -51,15 +54,15 @@ const Registration = ({
         </div>
         <div className="text-right">
           <div className="px-3 py-1 bg-[#00ff88]/10 rounded-full border border-[#00ff88]/20 flex items-center space-x-2">
-            <span className="w-1.5 h-1.5 bg-[#00ff88] rounded-full animate-pulse"></span>
+            <span className="w-1.5 h-1.5 bg-[#00ff88] rounded-full animate-pulse" />
             <span className="text-[9px] font-black text-[#00ff88] uppercase tracking-widest">Protocol v2.5</span>
           </div>
         </div>
       </div>
 
-      {/* Node Sponsorship Wrapper */}
+      {/* Sponsor ID */}
       <motion.div variants={item} className="bg-white/5 border border-white/10 rounded-2xl p-5 mb-6 relative group overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-[#00ff88]/5 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
+        <div className="absolute inset-0 bg-gradient-to-r from-[#00ff88]/5 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000" />
         <div className="flex justify-between items-center relative z-10">
           <div>
             <h3 className="text-[10px] font-black text-white/40 mb-1 uppercase tracking-[0.2em] italic">Authority Source</h3>
@@ -74,7 +77,7 @@ const Registration = ({
         </div>
       </motion.div>
 
-      {/* Protocol Activation Breakdown */}
+      {/* Activation Cost Breakdown */}
       <motion.div variants={item} className="bg-white/[0.03] border border-white/10 rounded-[2rem] p-6 mb-8 relative overflow-hidden group">
         <div className="absolute top-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-[#00ff88]/40 to-transparent" />
         
@@ -86,7 +89,7 @@ const Registration = ({
             </div>
           </div>
           <div className="text-right">
-             <p className="text-lg font-black text-[#00ff88] italic">≈ ${usdPrice} <span className="text-[10px] text-white/20 uppercase tracking-widest font-black not-italic ml-1">USD</span></p>
+            <p className="text-lg font-black text-[#00ff88] italic">≈ ${usdPrice} <span className="text-[10px] text-white/20 uppercase tracking-widest font-black not-italic ml-1">USD</span></p>
           </div>
         </div>
 
@@ -107,31 +110,51 @@ const Registration = ({
         </div>
       </motion.div>
 
-      <motion.button 
-        variants={item}
-        whileTap={{ scale: 0.96 }}
-        onClick={onActivate}
-        disabled={isProcessing}
-        className="w-full relative overflow-hidden group/btn"
-      >
-        <div className="absolute inset-0 bg-red-600 group-hover/btn:bg-red-500 transition-colors"></div>
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.2)_0%,_transparent_70%)] opacity-0 group-hover/btn:opacity-100 transition-opacity"></div>
-        
-        <div className="relative py-6 rounded-[1.5rem] flex items-center justify-center gap-3">
-          {isProcessing ? (
-            <>
-              <Loader2 className="animate-spin w-6 h-6 text-white" />
-              <span className="text-white font-black text-lg uppercase tracking-widest italic">Syncing Matrix...</span>
-            </>
-          ) : (
-            <>
-              <Zap className="w-6 h-6 text-white group-hover/btn:scale-110 transition-transform" />
-              <span className="text-white font-black text-lg uppercase tracking-widest italic">ACTIVATE NODE</span>
-            </>
-          )}
-        </div>
-      </motion.button>
+      {/* CTA Button */}
+      {!userAddress ? (
+        /* Wallet not connected — prompt to connect first */
+        <motion.button 
+          variants={item}
+          whileTap={{ scale: 0.96 }}
+          onClick={onConnectWallet}
+          className="w-full relative overflow-hidden group/btn rounded-[1.5rem]"
+        >
+          <div className="absolute inset-0 bg-white group-hover/btn:bg-white/90 transition-colors rounded-[1.5rem]" />
+          <div className="relative py-6 flex items-center justify-center gap-3">
+            <Wallet className="w-6 h-6 text-black group-hover/btn:scale-110 transition-transform" />
+            <span className="text-black font-black text-lg uppercase tracking-widest italic">Connect Wallet First</span>
+          </div>
+        </motion.button>
+      ) : (
+        /* Wallet connected — show activate button */
+        <motion.button 
+          variants={item}
+          whileTap={{ scale: 0.96 }}
+          onClick={onActivate}
+          disabled={isProcessing}
+          className="w-full relative overflow-hidden group/btn rounded-[1.5rem]"
+        >
+          <div className="absolute inset-0 bg-[#00ff88] group-hover/btn:bg-[#00dd77] transition-colors rounded-[1.5rem]" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.15)_0%,_transparent_70%)] opacity-0 group-hover/btn:opacity-100 transition-opacity rounded-[1.5rem]" />
+          <div className="absolute inset-0 shadow-[0_0_40px_rgba(0,255,136,0.4)] rounded-[1.5rem] opacity-0 group-hover/btn:opacity-100 transition-opacity" />
+          
+          <div className="relative py-6 flex items-center justify-center gap-3">
+            {isProcessing ? (
+              <>
+                <Loader2 className="animate-spin w-6 h-6 text-black" />
+                <span className="text-black font-black text-lg uppercase tracking-widest italic">Syncing Matrix...</span>
+              </>
+            ) : (
+              <>
+                <Zap className="w-6 h-6 text-black group-hover/btn:scale-110 transition-transform" strokeWidth={3} />
+                <span className="text-black font-black text-lg uppercase tracking-widest italic">ACTIVATE NODE</span>
+              </>
+            )}
+          </div>
+        </motion.button>
+      )}
 
+      {/* Feature Badges */}
       <motion.div variants={item} className="mt-8 grid grid-cols-2 gap-y-3 gap-x-6">
         {[
           'Instant Payouts',
@@ -147,8 +170,8 @@ const Registration = ({
       </motion.div>
 
       <div className="mt-8 flex items-center justify-center space-x-3 opacity-20 hover:opacity-40 transition-opacity">
-         <Info size={12} className="text-white" />
-         <p className="text-[8px] font-black uppercase tracking-widest text-white">Immutable Protocol Verified by Smart Contract</p>
+        <Info size={12} className="text-white" />
+        <p className="text-[8px] font-black uppercase tracking-widest text-white">Immutable Protocol Verified by Smart Contract</p>
       </div>
     </motion.div>
   );
